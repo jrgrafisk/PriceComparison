@@ -1,20 +1,30 @@
-// background.js for Firefox (using browser.runtime.onMessage)
+// background.js
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === 'findPrice') {
-    const gtin = message.gtin;
-    const url = message.url;
+    // Handle GetRuleList request
+    if (message === "GetRuleList") {
+        sendResponse([{}]); // Send empty rules object for now
+        return true;  // Keep the message channel open
+    }
+    
+    // Handle GetTabUrl request
+    if (message === "GetTabUrl") {
+        if (sender.tab) {
+            sendResponse(sender.tab.url);
+        }
+        return true;
+    }
 
-    fetch(url)
-      .then(response => response.text())
-      .then(html => {
-        sendResponse({ html, url });  // Send the raw HTML and URL back
-      })
-      .catch(error => {
-        console.error(`Error fetching data from ${url}:`, error);
-        sendResponse({ html: null, url });  // Send null HTML and the URL in case of error
-      });
-
-    // Return true to indicate response will be asynchronous
-    return true;
-  }
+    // Handle findPrice action
+    if (message.action === 'findPrice') {
+        fetch(message.url)
+            .then(response => response.text())
+            .then(html => {
+                sendResponse({ html, url: message.url });
+            })
+            .catch(error => {
+                console.error('Error fetching URL:', error);
+                sendResponse({ html: null, url: message.url });
+            });
+        return true; // Keep the message channel open for async response
+    }
 });
