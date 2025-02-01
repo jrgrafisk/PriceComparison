@@ -1,27 +1,30 @@
 {
-  "manifest_version": 3,
-  "name": "Cykelgear Price Comparison",
-  "version": "1.1",
-  "description": "Extension that compares the price of the product you are viewing on Cykelgear, to the prices on Bike-discount and Bike-components.",
-  "permissions": ["activeTab", "scripting"],
-  "host_permissions": [
+  "manifest_version": 2,
+  "name": "Bike Parts Price checker",
+  "version": "1.4",
+  "description": "Extension that compares prices between Cykelgear and Bike-discount/Bike-components in both directions. For statistical purposes, this extension tracks when users click on comparison links, collecting store name, product information, and prices to improve the service.",
+  "permissions": [
+    "activeTab",
+    "webRequest",
     "https://*.cykelgear.dk/*",
     "https://*.bike-discount.de/*",
-	"https://*.bikable.no/*",
-	"https://*.bikable.com/*",
+    "https://*.bikable.no/*",
+    "https://*.bikable.com/*",
     "https://*.bikable.se/*",
-    "https://*.bike-components.de/*"
+    "https://*.bike-components.de/*",
+    "https://jrgrafisk.dk/*"
   ],
   "background": {
-    "page": "background.html"
+    "scripts": ["background.js"]
   },
   "content_scripts": [
     {
       "matches": [
         "https://*.cykelgear.dk/*",
-		"https://*.bikable.no/*",
-		"https://*.bikable.com/*",
-        "https://*.bikable.se/*"
+        "https://*.bikable.no/*",
+        "https://*.bikable.com/*",
+        "https://*.bikable.se/*",
+        "https://*.bike-discount.de/*"
       ],
       "js": ["content.js"]
     }
@@ -34,7 +37,13 @@
   "browser_specific_settings": {
     "gecko": {
       "id": "firefoxextension@jrgrafisk.dk",
-      "strict_min_version": "134.0"
+      "strict_min_version": "134.0",
+      "android_package_name": "org.mozilla.firefox"
     }
+  },
+  "privacy": {
+    "websites": [
+      "https://jrgrafisk.dk"
+    ]
   }
 }
