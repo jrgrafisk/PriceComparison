@@ -1,0 +1,54 @@
+Juhlcycling
+Fix price converteren (fejl på BC)
+HollandBikeshop
+Cykeltøj fejler på CG
+alltricks
+
+
+
+jeg skal bruge priser fra både referrer og receiver
+af og til får jeg productnavn i gtin - det kan være fra gamle versioner som smider lort i maskineriet.
+Log version af extension ved click.
+Tilføj [&lang=eng] til r2-url (efter search term)
+
+
+Test ny version pop-up.
+
+Overvej at dropper priserne for nu.
+
+Referrer
+receiver
+referrer_url
+search_url
+product_name
+gtin
+timestamp
+version
+platform
+
+
+__SQL__
+SELECT
+    store as referred_to,
+    product_url as search_url,
+    product_name,
+    CASE
+        WHEN price IS NULL THEN NULL
+        WHEN price REGEXP '€[0-9.,]+' THEN CAST(REPLACE(REPLACE(REGEXP_SUBSTR(price, '€[0-9.,]+'), '€', ''), ',', '.') AS DECIMAL(10, 2))
+        WHEN price REGEXP '[0-9.,]+ EUR' THEN CAST(REPLACE(REPLACE(REGEXP_SUBSTR(price, '[0-9.,]+ EUR'), ' EUR', ''), ',', '.') AS DECIMAL(10, 2))
+        WHEN price REGEXP 'from[[:space:]]+€[0-9.,]+' THEN CAST(REPLACE(REPLACE(REGEXP_SUBSTR(price, 'from[[:space:]]+€[0-9.,]+'), 'from €', ''), ',', '.') AS DECIMAL(10, 2))
+        WHEN price REGEXP 'from[[:space:]]+[0-9.,]+[[:space:]]+EUR' THEN CAST(REPLACE(REPLACE(REGEXP_SUBSTR(price, 'from[[:space:]]+[0-9.,]+'), 'from ', ''), ',', '.') AS DECIMAL(10, 2))
+        ELSE NULL
+    END AS price_eur,
+    CASE
+        WHEN price IS NULL THEN NULL
+        WHEN price REGEXP '\\([0-9.,]+[[:space:]]+DKK\\)' THEN CAST(REPLACE(REPLACE(REGEXP_SUBSTR(price, '\\([0-9.,]+[[:space:]]+DKK\\)'), ' DKK)', ''), ',', '.') AS DECIMAL(10, 2))
+        WHEN price REGEXP '[0-9.,]+[[:space:]]+DKK' THEN CAST(REPLACE(REPLACE(REGEXP_SUBSTR(price, '[0-9.,]+[[:space:]]+DKK'), ' DKK', ''), ',', '.') AS DECIMAL(10, 2))
+        WHEN price REGEXP '[0-9.,]+[[:space:]]+kr' THEN CAST(REPLACE(REPLACE(REGEXP_SUBSTR(price, '[0-9.,]+[[:space:]]+kr'), ' kr', ''), ',', '.') AS DECIMAL(10, 2))
+        ELSE NULL
+    END AS price_dkk,
+    gtin,
+    referrer,
+    STR_TO_DATE(click_timestamp, '%Y-%m-%d %H:%i:%s') AS timestamp
+FROM product_clicks 
+ORDER BY `timestamp` DESC 

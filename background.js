@@ -27,4 +27,38 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
             });
         return true; // Keep the message channel open for async response
     }
+
+    // Handle trackClick action
+    if (message.action === "trackClick") {
+        trackClick(message.data);
+        return true;
+    }
+
+    // Handle shopsUpdated action
+    if (message.action === 'shopsUpdated') {
+        // Broadcast to all tabs
+        browser.tabs.query({}).then(tabs => {
+            tabs.forEach(tab => {
+                browser.tabs.sendMessage(tab.id, {
+                    action: 'shopsUpdated',
+                    enabledShops: message.enabledShops
+                }).catch(() => {
+                    // Ignore errors for tabs that can't receive messages
+                });
+            });
+        });
+    }
+});
+
+// Initialize storage for enabled shops (all enabled by default)
+browser.storage.sync.get("enabledShops").then(data => {
+    if (!data.enabledShops) {
+        // Set default enabled shops using SHOPS array
+        const defaultEnabledShops = {};
+        SHOPS.forEach(shop => {
+            defaultEnabledShops[shop.domain] = true;
+        });
+        browser.storage.sync.set({ enabledShops: defaultEnabledShops });
+    }
+    console.log("Enabled shops:", data.enabledShops);
 });

@@ -1,0 +1,185 @@
+ /* config.js */
+// Exchange rates
+const EXCHANGE_RATES = {
+    EUR_TO_DKK: 7.45,
+    EUR_TO_GBP: 0.86,
+    EUR_TO_USD: 1.08
+};
+
+// Shop configurations
+const SHOPS = [
+    {
+        name: "Bike Discount",
+        url: "https://www.bike-discount.de/en/search?sSearch=",
+        priceSelector: "meta[itemprop='price'], #netz-price, .product--price",
+        gtinSelectors: [".netz-ean", "[data-ean]", ".pd-ean"],
+        domain: "bike-discount.de",
+        tablePosition: ".product--tax",
+        defaultCurrency: "EUR"
+    },
+    {
+        name: "Bike Components",
+        url: "https://www.bike-components.de/en/s/?keywords=",
+        priceSelector: ".price.site-price, .price.block.pt-6[data-test='auto-product-price']",        
+        gtinSelectors: [
+            {
+                type: "application/ld+json",
+                paths: ["gtin", "gtin13", "gtin8", "gtin12", "gtin14", "offers.gtin", "offers.gtin13", "offers.gtin8", "offers.gtin12", "offers.gtin14"]
+            }
+        ],
+        domain: "bike-components.de",
+        tablePosition: ".wrap-price",
+        defaultCurrency: "EUR"
+    },
+    {
+        name: "Cykelgear",
+        url: "https://cykelgear.dk/search?q=",
+        priceSelector: ".text-lg.md\\:text-xl.leading-5.font-semibold.text-orange.whitespace-nowrap",
+        gtinSelectors: ["[itemprop=\"gtin13\"]"],
+        domain: "cykelgear.dk",
+        tablePosition: ".flex.gap-4.flex-wrap.mt-6",
+        defaultCurrency: "DKK"
+    },
+    {
+        name: "Cykelshoppen",
+        url: "https://cykelshoppen.dk/search?query=",
+        priceSelector: ".price-purchase",
+        gtinSelectors: [
+            {
+                type: "jsonld",
+                paths: ["gtin", "gtin13", "gtin8", "gtin12", "gtin14"]
+            }
+        ],
+        domain: "cykelshoppen.dk",
+        tablePosition: ".text-xs.font-light.text-gray-400",
+        defaultCurrency: "DKK"
+    },
+    {
+        name: "AllBike",
+        url: "https://www.allbike.dk/catalogsearch/result/?q=",
+        priceSelector: ".price",
+        gtinSelectors: ["td.col.data[data-th=\"EAN\"]"],
+        domain: "allbike.dk",
+        tablePosition: ".price-box",
+        defaultCurrency: "DKK"
+    },
+    {
+        name: "Cykelpartner",
+        url: "https://www.cykelpartner.dk/produktsogning?q=",
+        priceSelector: ".price-separated, .price, .uk-h2.uk-text-bold.uk-text-primary",
+        gtinSelectors: [
+            'tr td:contains("EAN") + td',
+            '[itemprop="gtin13"]',
+            '[itemprop="gtin"]',
+            'meta[property="product:ean"]'
+        ],
+        domain: "cykelpartner.dk",
+        tablePosition: ".uk-margin",
+        defaultCurrency: "DKK"
+    },
+    {
+        name: "Cykelexperten",
+        url: "https://cykelexperten.dk/?hr-search=(search_term:*",
+        urlSuffix: "*)",
+        priceSelector: ".hr-search-overlay-product-price-box .price, .product-price, .product-detail-price-container",
+        gtinSelectors: [
+            "[itemprop='gtin13']", 
+            "[itemprop='gtin']",
+            "span:contains('EAN')",
+            ".product-specification tr:contains('EAN') td:last-child"
+        ],
+        domain: "cykelexperten.dk",
+	    tablePosition: ".product-detail-price-container",
+	    defaultCurrency: "DKK"
+    },
+	    {
+        name: "Fri Bike Shop (beta)",
+        url: "https://www.fribikeshop.dk/soeg?q=",
+        priceSelector: ".product__top--price pp-margin, .salesprice, .product-detail-price-container",
+        gtinSelectors: [
+            ".specifications__spec-value",
+			"[itemprop='gtin13']", 
+            "[itemprop='gtin']",
+            "span:contains('EAN')"
+        ],
+        domain: "fribikeshop.dk",
+	    tablePosition: ".product__top--content-size",
+	    defaultCurrency: "DKK"
+    },
+	{
+	        name: "AllTricks (beta)",
+        url: "https://www.alltricks.com/Buy/",
+        priceSelector: ".price , .alltricks-Product-wrapPrice, .alltricks-Product-wrapPrice",
+        gtinSelectors: [
+			"[itemprop='gtin13']", 
+            "[itemprop='gtin']",
+            "span:contains('EAN')"
+        ],
+        domain: "alltricks.com",
+	    tablePosition: ".product-header-stock-delay",
+	    defaultCurrency: "EUR"
+    },
+    {
+	    name: "R2 Bike",
+	    url: "https://r2-bike.com/search/?qs={gtin}&lang=eng",
+	    priceSelector: "meta[itemprop='price'], .ndGAfVKBrutto, .price.no-letter-spacing.productbox-price.mas-price-color, [itemprop='content']",
+	    gtinSelectors: [
+	        '[itemprop="gtin13"]',
+	        '[itemprop="gtin"]'
+	    ],
+	    domain: "r2-bike.com",
+	    tablePosition: ".vat_info",
+	    defaultCurrency: "EUR"
+	}
+];
+
+// Product info template
+const PRODUCT_INFO_TEMPLATE = {
+    gtin: [],
+    mpn: [],
+    shop: {
+        name: '',
+        url: '',
+        domain: ''
+    },
+    price: {
+        amount: null,
+        currency: null,
+        rawText: '',
+        source: ''
+    },
+    product: {
+        name: null,
+        brand: '',
+        category: ''
+    },
+    referrer: {
+        url: '',
+        price: null,
+        timestamp: ''
+    },
+    detectedOn: '',
+    foundTimestamp: ''
+};
+
+document.querySelectorAll('.track-click').forEach(link => {
+    link.addEventListener('click', event => {
+        console.log('Link clicked:', event.currentTarget.href);
+        // Ensure the default behavior is not prevented
+        // event.preventDefault(); // Remove or comment out if present
+    });
+});
+
+
+/* Export for Node.js or attach to window for browser context */
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        SHOPS,
+        EXCHANGE_RATES,
+        PRODUCT_INFO_TEMPLATE
+    };
+} else {
+    window.SHOPS = SHOPS;
+    window.EXCHANGE_RATES = EXCHANGE_RATES;
+    window.PRODUCT_INFO_TEMPLATE = PRODUCT_INFO_TEMPLATE;
+}

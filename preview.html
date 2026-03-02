@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GTIN Extension Preview</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .product-page {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .product-header {
+            display: flex;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        .product-image {
+            width: 400px;
+            height: 400px;
+            background: #e0e0e0;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #666;
+        }
+        .product-info {
+            flex: 1;
+        }
+        h1 {
+            font-size: 28px;
+            margin: 0 0 15px 0;
+            color: #333;
+        }
+        .product-price {
+            font-size: 32px;
+            font-weight: bold;
+            color: #e74c3c;
+            margin: 20px 0;
+        }
+        .product-description {
+            color: #666;
+            line-height: 1.6;
+            margin-top: 20px;
+        }
+        .product-specs {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+        }
+        .spec-row {
+            display: flex;
+            padding: 10px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .spec-label {
+            font-weight: bold;
+            width: 150px;
+            color: #333;
+        }
+        .spec-value {
+            color: #666;
+        }
+        
+        /* GTIN Display Container Styles (from extension) */
+        .gtin-display-container {
+            margin: 20px 0;
+            padding: 15px;
+            border: 2px solid #f2994b;
+            border-radius: 8px;
+            background-color: #fff;
+            font-family: Arial, sans-serif;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .gtin-display-container h3 {
+            margin: 0 0 10px 0;
+            font-size: 18px;
+            color: #333;
+        }
+        .gtin-display-container ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .gtin-display-container li {
+            margin: 8px 0;
+            padding: 8px;
+            background-color: #f9f9f9;
+            border-radius: 4px;
+        }
+        .gtin-display-container span {
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        .gtin-display-container a {
+            color: #f2994b;
+            text-decoration: none;
+        }
+        .gtin-display-container a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="product-page">
+        <div class="product-header">
+            <div class="product-image">
+                Product Image
+            </div>
+            <div class="product-info">
+                <h1>Shimano XT M8100 Rear Derailleur</h1>
+                <div class="product-price">€89.99</div>
+                <p class="product-description">
+                    High-performance rear derailleur for mountain bikes. Features Shadow RD+ technology 
+                    for improved chain stability and reduced chain slap.
+                </p>
+            </div>
+        </div>
+
+        <!-- This is where the extension would insert the GTIN display -->
+        <div class="gtin-display-container">
+            <h3>Found GTINs</h3>
+            <ul>
+                <li>
+                    <span>GTIN: 4548736001234</span>
+                    <a href="https://www.ecosia.org/search?method=index&q=4548736001234" target="_blank" rel="noopener noreferrer">
+                        🔍 Search for this product on Ecosia
+                    </a>
+                </li>
+                <li>
+                    <span>GTIN: 4548736001241</span>
+                    <a href="https://www.ecosia.org/search?method=index&q=4548736001241" target="_blank" rel="noopener noreferrer">
+                        🔍 Search for this product on Ecosia
+                    </a>
+                </li>
+            </ul>
+        </div>
+
+        <div class="product-specs">
+            <h2>Product Specifications</h2>
+            <div class="spec-row">
+                <div class="spec-label">Brand:</div>
+                <div class="spec-value">Shimano</div>
+            </div>
+            <div class="spec-row">
+                <div class="spec-label">Model:</div>
+                <div class="spec-value">XT M8100</div>
+            </div>
+            <div class="spec-row">
+                <div class="spec-label">EAN:</div>
+                <div class="spec-value">4548736001234</div>
+            </div>
+            <div class="spec-row">
+                <div class="spec-label">Speed:</div>
+                <div class="spec-value">12-speed</div>
+            </div>
+            <div class="spec-row">
+                <div class="spec-label">Weight:</div>
+                <div class="spec-value">280g</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Example JSON-LD that would be on the page (hidden) -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "Product",
+        "name": "Shimano XT M8100 Rear Derailleur",
+        "gtin13": "4548736001234",
+        "offers": {
+            "@type": "Offer",
+            "price": "89.99",
+            "priceCurrency": "EUR",
+            "availability": "https://schema.org/InStock"
+        },
+        "hasVariant": [
+            {
+                "@type": "Product",
+                "gtin13": "4548736001241",
+                "name": "Shimano XT M8100 Rear Derailleur - Long Cage"
+            }
+        ]
+    }
+    </script>
+</body>
+</html>

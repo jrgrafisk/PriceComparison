@@ -1,49 +1,52 @@
 {
   "manifest_version": 2,
-  "name": "Bike Parts Price checker",
-  "version": "1.4",
-  "description": "Extension that compares prices between Cykelgear and Bike-discount/Bike-components in both directions. For statistical purposes, this extension tracks when users click on comparison links, collecting store name, product information, and prices to improve the service.",
+  "name": "PedalPricer",
+  "version": "1.6.7",
+  "description": "Compare bike part prices across multiple stores.",
   "permissions": [
     "activeTab",
-    "webRequest",
+    "storage",
     "https://*.cykelgear.dk/*",
     "https://*.bike-discount.de/*",
     "https://*.bikable.no/*",
     "https://*.bikable.com/*",
     "https://*.bikable.se/*",
     "https://*.bike-components.de/*",
-    "https://jrgrafisk.dk/*"
+    "https://jrgrafisk.dk/*",
+    "https://*.allbike.dk/*",
+    "https://*.cykelpartner.dk/*",
+	"https://*.r2-bike.com/*",
+	"https://*.cykelexperten.dk/*",
+	"https://*.fribikeshop.dk/*",
+	"https://*.alltricks.com/*",
+    "https://*.cykelshoppen.dk/*"
   ],
   "background": {
-    "scripts": ["background.js"]
+    "scripts": [
+      "config.js",
+      "background.js"
+    ]
   },
   "content_scripts": [
     {
-      "matches": [
-        "https://*.cykelgear.dk/*",
-        "https://*.bikable.no/*",
-        "https://*.bikable.com/*",
-        "https://*.bikable.se/*",
-        "https://*.bike-discount.de/*"
-      ],
-      "js": ["content.js"]
+      "matches": ["*://*/*"],
+      "js": ["config.js", "content.js"]
     }
   ],
   "icons": {
-    "16": "icons/16x16bc.png",
-    "48": "icons/48x48bc.png",
-    "128": "icons/128x128bc.png"
+    "16": "icons/16x16pp.png",
+    "48": "icons/48x48pp.png",
+    "128": "icons/128x128pp.png"
   },
   "browser_specific_settings": {
     "gecko": {
       "id": "firefoxextension@jrgrafisk.dk",
-      "strict_min_version": "134.0",
-      "android_package_name": "org.mozilla.firefox"
+      "strict_min_version": "134.0"
     }
   },
-  "privacy": {
-    "websites": [
-      "https://jrgrafisk.dk"
-    ]
+  "browser_action": {
+    "default_popup": "popup.html"
   }
-}
+  }
+
+

@@ -1,5 +1,135 @@
+/* content.js */
+// Disable all console.log statements
+ // const originalConsoleLog = console.log; // Store the original console.log function
+// console.log = function() {}; // Override console.log with a no-op function
+
+// To re-enable logging later, you can restore the original function
+ console.log = originalConsoleLog; // Uncomment this line to restore logging
+
 console.log('Content script loaded');
 console.log('Current URL:', window.location.href);
+
+// Now you can use the globally available config objects
+console.log('Loaded shops:', SHOPS);
+console.log('Exchange rates:', EXCHANGE_RATES);
+
+// Add shop filtering support - SINGLE DECLARATION
+let enabledShops = {};
+
+// Timeout
+let timeout;
+
+// URL tracking
+let lastUrl = location.href;
+
+// Update state tracking
+let isUpdating = false;
+
+// Get initial enabled shops state
+browser.storage.sync.get('enabledShops').then(data => {
+    enabledShops = data.enabledShops || {};
+});
+
+// Add message listener for shop updates
+browser.runtime.onMessage.addListener((message) => {
+    if (message.action === 'shopsUpdated') {
+        enabledShops = message.enabledShops;
+        // Re-run price comparison with new shop settings
+        findAndComparePrice();
+    }
+});
+
+// Store referrer on page load
+if (document.referrer) {
+    sessionStorage.setItem('lastReferrer', document.referrer);
+}
+
+// Reuse parser instance
+const parser = new DOMParser();
+
+// Cache selectors
+const selectorCache = new Map();
+
+function getCachedSelector(selector) {
+    if (!selectorCache.has(selector)) {
+        selectorCache.set(selector, document.querySelector(selector));
+    }
+    return selectorCache.get(selector);
+}
+
+// Single initialization flag
+let isInitialized = false;
+
+// Use the config for your productInfo object
+let productInfo = {
+    gtin: [],
+    mpn: [],
+    shop: {
+        name: '',
+        url: window.location.href,
+        domain: window.location.hostname
+    },
+    price: {
+        amount: null,
+        currency: null,
+        rawText: '',
+        source: ''
+    },
+    product: {
+        name: null,
+        brand: '',
+        category: ''
+    },
+    referrer: {
+        url: window.location.href,
+        price: null,
+        timestamp: new Date().toISOString()
+    },
+    detectedOn: window.location.hostname,
+    foundTimestamp: new Date().toISOString()
+};
+
+async function initializeEnabledShops() {
+    const data = await browser.storage.sync.get('enabledShops');
+    enabledShops = data.enabledShops || {};
+    console.log('Initialized enabled shops:', enabledShops);
+}
+// Single init function
+function initialize() {
+    if (isInitialized) return;
+    isInitialized = true;
+
+    // Initialize shops state once
+    initializeEnabledShops();
+
+    // Single mutation observer setup
+    setupMutationObserver();
+
+    // Initial price comparison
+    findAndComparePrice();
+}
+
+
+function getCurrencyCodeFromSymbol(symbol) {
+    switch (symbol) {
+      case '€': return 'EUR';
+      case '£': return 'GBP';
+      case '$': return 'USD';
+      // ...
+      default:  return null; // or 'DKK' or your fallback
+    }
+  }
+  function detectCurrency(priceText) {
+    if (!priceText) return null;
+    const text = priceText.trim();
+    if (text.includes('€')) return 'EUR';
+    if (text.includes('kr') || text.includes('DKK')) return 'DKK';
+    if (text.includes('£')) return 'GBP';
+    if (text.includes('$')) return 'USD';
+    return 'EUR'; // Default to EUR if no currency symbol found
+}
+
+
 
 let gtinFound = false;
 let priceFound = false;
@@ -12,124 +142,806 @@ let processedGTINs = new Map();
 let observer = null;
 let currentUrl = window.location.href;
 const EUR_TO_DKK_RATE = 7.45;
- 
-// Get current site information
-let { price: currentPrice, currency: currentCurrency } = getCurrentPriceAndCurrency();
-console.log('Current price:', currentPrice, 'Currency:', currentCurrency);
+const EUR_TO_GBP_RATE = 0.86;
+const EUR_TO_USD_RATE = 1.08;
 
-// Convert to EUR for comparison
-const currentPriceEUR = currentCurrency === 'EUR' ? currentPrice : currentPrice / EUR_TO_DKK_RATE;
-console.log('Price in EUR:', currentPriceEUR);
+let gtinSearchAttempts = 0;
+const MAX_GTIN_SEARCH_ATTEMPTS = 2;
+let cachedGTIN = null;  // Add this at the top with other global variables
 
-const convertEurToDkk = (priceInEur) => priceInEur * EUR_TO_DKK_RATE;
-const convertDkkToEur = (priceInDkk) => priceInDkk / EUR_TO_DKK_RATE;
+function normalizePrice(priceText) {
+    if (!priceText) return null;
 
- 
- function getCurrentPriceAndCurrency() {
-    const scripts = document.querySelectorAll('script[type="application/ld+json"]');
-    
-    for (const script of scripts) {
-        try {
-            const data = JSON.parse(script.textContent);
-            if (data['@type'] === 'Product' && data.offers) {
-                return {
-                    price: parseFloat(data.offers.price),
-                    currency: data.offers.priceCurrency
-                };
-            }
-        } catch (e) {
-            console.error('Error parsing JSON-LD:', e);
-        }
-    }
-    return { price: null, currency: null };
-}
- 
-function findGTIN() {
-    const gtinSelectors = [
-        // Standard GTIN selectors
-        '[itemprop="gtin13"]', '[itemprop="gtin"]', '[itemprop="gtin8"]',
-        '[itemprop="gtin12"]', '[itemprop="gtin14"]', '.netz-ean',
-        '[data-ean]', 'span[itemprop="productID"]', 'meta[property="product:ean"]',
-        'meta[property="og:ean"]', '.ean-code', '.product-ean',
+    try {
+        // Clean up the price text
+        let price = priceText.trim();
         
-        // Additional selectors
-        '[data-gtin]', '.gtin-code', '.product-gtin', 'span.ean', 'div.ean',
-        'p.ean', '[data-product-code]', '[data-barcode]', 'meta[name="gtin"]',
-        'meta[name="ean"]', '[itemprop="productID"]', '.barcode-number',
-        '.product-barcode', 'span[data-ean]', 'div[data-gtin]', '.code-ean',
-        '.sku-ean', '[data-product-ean]', 'meta[property="product:barcode"]',
-        '.gtin', '.product-identifier', '[data-identifier]', 'span.product-code',
-        'div.product-code'
-    ];
-
-    console.log("🔍 Søger efter GTIN...");
-
-    let foundGTINs = new Set(); // Store unique GTINs
-
-    gtinSelectors.forEach(selector => {
-        document.querySelectorAll(selector).forEach(element => {
-            let value = element.textContent?.trim() || '';
-            
-            // Check common GTIN attributes
-            const attrValue = element.getAttribute("content")?.trim() ||
-                              element.getAttribute("data-ean")?.trim() ||
-                              element.getAttribute("data-gtin")?.trim() ||
-                              element.getAttribute("value")?.trim() || '';
-
-            // Use the first valid value found
-            let gtin = (attrValue || value).replace(/[^0-9]/g, ''); 
-
-            if (gtin.length >= 8 && gtin.length <= 14) {
-                foundGTINs.add(gtin);
-                console.log(`✅ Fundet GTIN: ${gtin} (Selector: '${selector}')`);
-            }
-        });
-    });
-
-    // If no GTIN found via selectors, fallback to raw text search
-    if (foundGTINs.size === 0) {
-        console.log("❌ GTIN ikke fundet i standardselektorer. Prøver fallback...");
-
-        const pageText = document.body.textContent;
-        const matches = pageText.match(/\b\d{8,14}\b/g);
-
-        if (matches) {
-            matches.forEach(match => {
-                if (match.length >= 8 && match.length <= 14) {
-                    foundGTINs.add(match);
-                    console.log(`✅ Fallback GTIN fundet: ${match}`);
-                }
-            });
+        // Remove "from" or "fra" prefix (case insensitive)
+        price = price.replace(/^(from|fra)\s+/i, '');
+        
+        // Remove currency symbols and extra spaces
+        price = price.replace(/[€$£kr]/g, '').trim();
+        
+        // Handle European number format (e.g., "27,95")
+        if (price.includes(',') && /,\d{2}(?:\s|$)/.test(price)) {
+            price = price.replace(/\./g, '').replace(',', '.');
+        } else {
+            // Remove thousand separators
+            price = price.replace(/,/g, '');
         }
-    }
-
-    if (foundGTINs.size > 0) {
-        return Array.from(foundGTINs); // Return array of found GTINs
-    } else {
-        console.log("❌ Ingen GTIN fundet på denne side.");
+        
+        // Convert to number
+        const numericPrice = parseFloat(price);
+        
+        if (isNaN(numericPrice)) {
+            console.log('❌ Failed to parse price:', priceText);
+            return null;
+        }
+        
+        console.log('✅ Parsed price:', { original: priceText, normalized: numericPrice });
+        return numericPrice;
+    } catch (error) {
+        console.error('Error normalizing price:', error);
         return null;
     }
 }
 
+// Get current site information
+let { price: currentPrice, currency: currentCurrency } = getCurrentPriceAndCurrency();
+console.log('Current price:', currentPrice, 'Currency:', currentCurrency);
+
+/* // Convert to EUR for comparison
+const currentPriceEUR = currentCurrency === 'EUR' ? currentPrice : currentPrice / EUR_TO_DKK_RATE;
+console.log('Price in EUR:', currentPriceEUR); */
+
+const convertEurToDkk = (priceInEur) => priceInEur * EUR_TO_DKK_RATE;
+const convertDkkToEur = (priceInDkk) => priceInDkk / EUR_TO_DKK_RATE;
+
+
+function showLoadingState() {
+    const existingTable = document.querySelector('.price-comparison-table');
+    if (existingTable) {
+        existingTable.style.opacity = '0.5';
+        const loading = document.createElement('div');
+        loading.className = 'price-loading';
+        loading.innerHTML = 'Henter priser...';
+        loading.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);';
+        existingTable.appendChild(loading);
+    }
+}
+
+function hideLoadingState() {
+    const existingTable = document.querySelector('.price-comparison-table');
+    if (existingTable) {
+        existingTable.style.opacity = '1';
+        const loading = existingTable.querySelector('.price-loading');
+        if (loading) loading.remove();
+    }
+}
+
+
+/**
+ * Converts a given numeric price from a specified currency to EUR.
+ * 
+ * @param {number} price - The price to convert.
+ * @param {string} currency - Currency code (e.g., 'EUR', 'DKK', 'USD', 'GBP').
+ * @returns {number|null} The price in EUR if conversion is possible, otherwise null.
+ */
+function convertToEUR(price, currency) {
+    if (typeof price !== 'number' || isNaN(price)) {
+        console.log(`❌ Invalid price for conversion: ${price}`);
+        return null;
+    }
+
+    switch (currency?.toUpperCase()) {
+        case 'EUR': return price;
+        case 'DKK': return price / EXCHANGE_RATES.EUR_TO_DKK;
+        case 'GBP': return price / EXCHANGE_RATES.EUR_TO_GBP;
+        case 'USD': return price / EXCHANGE_RATES.EUR_TO_USD;
+        default:
+            console.log(`❌ Unsupported currency: ${currency}, defaulting to EUR`);
+            return price; // Default to EUR
+    }
+}
 
 
 
-function waitForGTIN(callback) {
-    console.log("Overvåger ændringer i DOM for GTIN...");
+
+// Helper function to safely convert to number
+function safeNumber(value) {
+    const num = Number(value);
+    return isNaN(num) ? null : num;
+}
+
+// Helper function to normalize price to EUR
+function normalizePriceToEUR(price, currency) {
+    const numPrice = safeNumber(price);
+    if (numPrice === null) return null;
     
+    switch(currency.toUpperCase()) {
+        case 'EUR': return numPrice;
+        case 'DKK': return numPrice / EXCHANGE_RATES.EUR_TO_DKK;
+        case 'GBP': return numPrice / EXCHANGE_RATES.EUR_TO_GBP;
+        case 'USD': return numPrice / EXCHANGE_RATES.EUR_TO_USD;
+        default:
+            console.warn(`Unsupported currency: ${currency}`);
+            return null;
+    }
+}
+
+function displayPrice(responses, identifier, identifierType) {
+    const currentPriceInfo = getCurrentPriceAndCurrency();
+    if (!currentPriceInfo.price) {
+        console.log('❌ No price found on current page');
+        return;
+    }
+
+    // Process all responses in parallel
+    const priceResults = responses
+        .filter(response => response?.html)
+        .map(response => {
+            const shop = SHOPS.find(s => response.url.includes(s.domain));
+            if (!shop || (enabledShops[shop.domain] === false)) return null;
+
+            const doc = new DOMParser().parseFromString(response.html, 'text/html');
+            const priceElement = doc.querySelector(shop.priceSelector);
+            if (!priceElement) return null;
+
+            const priceText = priceElement.textContent.trim();
+            const { price, currency } = extractPriceAndCurrency(priceText);
+            if (!price) return null;
+
+/*             const validation = validatePrice(
+                price,
+                currentPriceInfo.price,
+                currency,
+                currentPriceInfo.currency,
+                { debugLog: true }
+            ); */
+
+/*             if (!validation.isValid) return null; */
+
+            return {
+                shop: shop.name,
+                price: priceText,
+                eurPrice: currency === 'EUR' ? price : price / EXCHANGE_RATES.EUR_TO_DKK,
+                dkkPrice: currency === 'DKK' ? price : price * EXCHANGE_RATES.EUR_TO_DKK,
+                shopUrl: response.url
+            };
+        })
+        .filter(result => result !== null);
+
+    const productName = findProductName();
+    const comparisonMessage = priceResults.length === 0 ?
+        generateNoProductsMessage(productName) :
+        generateComparisonTable(priceResults, identifierType, productName);
+
+    console.log('Generated comparisonMessage:', comparisonMessage); // Debugging log
+
+    // Ensure the shop object is passed correctly
+    const shop = SHOPS.find(s => window.location.href.includes(s.domain));
+    if (shop) {
+        insertComparisonTable(shop, comparisonMessage);
+    } else {
+        console.error('No matching shop found for the current URL');
+    }
+}
+
+
+let priceUpdateTimeout = null;
+
+function debouncedPriceUpdate() {
+    clearTimeout(priceUpdateTimeout);
+    priceUpdateTimeout = setTimeout(() => {
+        findAndComparePrice();
+    }, 300);
+}
+  
+
+function detectUrlChange() {
+    let lastUrl = location.href;
+
     const observer = new MutationObserver(() => {
-        const gtin = findGTIN();
-        if (gtin) {
-            observer.disconnect();
-            callback(gtin);
+        if (location.href !== lastUrl) {
+            console.log('🔄 URL changed (Detected by MutationObserver):', location.href);
+            lastUrl = location.href;
+            gtinSearchAttempts = 0;
+            cachedGTIN = null;  // Reset cached GTIN
+            handleNavigation();
+            console.log("🔄 Checking for GTIN again...");
+            findGTINsOnPage();
+            addDkkPriceDisplay();
         }
     });
 
     observer.observe(document.body, { childList: true, subtree: true });
 }
 
-// Brug funktionen til at vente på GTIN
-waitForGTIN(gtin => console.log("GTIN fundet dynamisk:", gtin));
+detectUrlChange();
+
+function getCurrentPriceAndCurrency() {
+    const currentShop = SHOPS.find(shop => window.location.hostname.includes(shop.domain));
+    if (!currentShop) return { price: null, currency: null };
+
+    // Use the configured price selector for the current shop
+    const priceElement = document.querySelector(currentShop.priceSelector);
+    if (!priceElement) {
+        console.log('❌ No price element found using configured selector');
+        return { price: null, currency: null };
+    }
+
+    // Extract price text from the configured selector
+    let priceText = priceElement.textContent?.trim() || priceElement.getAttribute('content')?.trim();
+    if (!priceText) {
+        console.log('❌ No price text found in the price element');
+        return { price: null, currency: null };
+    }
+
+    // Normalize and extract the price
+    const price = normalizePrice(priceText);
+    const currency = detectCurrencyFromText(priceText, currentShop.defaultCurrency);
+
+    if (price !== null) {
+        console.log('✅ Found price using configured selector:', { price, currency });
+        return { price, currency };
+    }
+
+    console.log('❌ Failed to extract a valid price');
+    return { price: null, currency: null };
+}
+
+// Helper function to normalize price
+function normalizePrice(priceText) {
+    if (!priceText) return null;
+
+    try {
+        // Clean up the price text
+        let price = priceText.trim();
+
+        // Remove "from" or "fra" prefix (case insensitive)
+        price = price.replace(/^(from|fra)\s+/i, '');
+
+        // Remove currency symbols and extra spaces
+        price = price.replace(/[€$£kr]/g, '').trim();
+
+        // Handle European number format (e.g., "27,95")
+        if (price.includes(',') && /,\d{2}(?:\s|$)/.test(price)) {
+            price = price.replace(/\./g, '').replace(',', '.');
+        } else {
+            // Remove thousand separators
+            price = price.replace(/,/g, '');
+        }
+
+        // Convert to number
+        const numericPrice = parseFloat(price);
+
+        if (isNaN(numericPrice)) {
+            console.log('❌ Failed to parse price:', priceText);
+            return null;
+        }
+
+        console.log('✅ Parsed price:', { original: priceText, normalized: numericPrice });
+        return numericPrice;
+    } catch (error) {
+        console.error('Error normalizing price:', error);
+        return null;
+    }
+}
+
+// Function to detect currency based on price text
+function detectCurrencyFromText(priceText, defaultCurrency) {
+    // Check for EUR or € for Euro
+    if (priceText.includes('EUR') || priceText.includes('€')) {
+        return 'EUR';
+    }
+    // Check for kr, DKK, or kr. for Danish Krone
+    if (priceText.includes('kr') || priceText.includes('DKK') || priceText.includes('kr.')) {
+        return 'DKK';
+    }
+    // If no currency is detected, return the default currency
+    return defaultCurrency;
+}
+
+
+
+// Function to toggle visibility of additional shops
+function toggleMoreShops() {
+    const additionalShops = document.querySelectorAll('.additional-shop'); // Adjust the selector as needed
+    additionalShops.forEach(shop => {
+        shop.style.display = shop.style.display === 'none' ? 'block' : 'none';
+    });
+}
+
+/* // Create and append the toggle button
+function createToggleButton() {
+    const toggleButton = document.createElement('button');
+    toggleButton.textContent = 'Toggle More Shops';
+    toggleButton.addEventListener('click', toggleMoreShops);
+    document.body.appendChild(toggleButton); // Append to the body or a specific container
+}
+
+// Call the function to create the toggle button
+createToggleButton(); */
+
+ 
+function getJSONLDPrice() {
+    try {
+        const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+        for (const script of scripts) {
+            const data = JSON.parse(script.textContent);
+            
+            // Normalize to an array of items
+            const items = Array.isArray(data) ? data : [data];
+            
+            for (const item of items) {
+                // Case 1: Standard Product
+                if (item['@type'] === 'Product' && item.offers) {
+                    const offers = Array.isArray(item.offers) ? item.offers[0] : item.offers;
+                    if (offers.price && offers.priceCurrency) {
+                        const price = parseFloat(offers.price);
+                        if (!isNaN(price)) {
+                            return {
+                                price,
+                                currency: offers.priceCurrency
+                            };
+                        }
+                    }
+                }
+                // Case 2: ProductGroup with variants
+                else if (item['@type'] === 'ProductGroup' && item.hasVariant) {
+                    const variants = Array.isArray(item.hasVariant) ? item.hasVariant : [item.hasVariant];
+                    for (const variant of variants) {
+                        if (variant.offers) {
+                            const offers = Array.isArray(variant.offers) ? variant.offers[0] : variant.offers;
+                            if (offers.price && offers.priceCurrency) {
+                                const price = parseFloat(offers.price);
+                                if (!isNaN(price)) {
+                                    return {
+                                        price,
+                                        currency: offers.priceCurrency
+                                    };
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        console.error('Error parsing JSON-LD:', e);
+    }
+    return { price: null, currency: null };
+}
+
+function extractPriceAndCurrency(priceText) {
+    if (!priceText) return { price: null, currency: null };
+
+    // Clean the text
+    let text = priceText.trim();
+    
+    // Remove "from" or "fra" prefix
+    text = text.replace(/^(from|fra)\s+/i, '');
+
+    // Determine currency
+    let currency = 'EUR';
+    if (text.includes('kr') || text.includes('DKK')) currency = 'DKK';
+
+    // Clean up the price
+    let price = text.replace(/[€$£kr]/g, '').trim();
+
+    // Handle European number format
+    if (price.includes(',') && /,\d{2}(?:\s|$)/.test(price)) {
+        price = price.replace(/\./g, '').replace(',', '.');
+    } else {
+        price = price.replace(/,/g, '');
+    }
+
+    const numericPrice = parseFloat(price);
+    if (isNaN(numericPrice)) {
+        console.log('❌ Failed to parse price:', priceText);
+        return { price: null, currency: null };
+    }
+
+    return { price: numericPrice, currency };
+}
+
+/* 
+function validatePrice(sourcePrice, targetPrice, sourceCurrency = 'EUR', targetCurrency = 'EUR', options = {}) {
+    const {
+        lowerThreshold = 0.2,  // Price can't be 80% lower
+        upperThreshold = 1.8,  // Price can't be 80% higher
+        debugLog = true
+    } = options;
+
+    // First, ensure we have valid numeric prices
+    let sourcePriceNum = parseFloat(sourcePrice);
+    let targetPriceNum = parseFloat(targetPrice);
+
+    // Guard clauses for invalid inputs
+    if (isNaN(sourcePriceNum) || isNaN(targetPriceNum)) {
+        if (debugLog) console.log('❌ Invalid price values:', { sourcePrice, targetPrice });
+        return {
+            isValid: false,
+            reason: 'INVALID_PRICES',
+            details: { sourcePrice, targetPrice }
+        };
+    }
+
+    // Convert both prices to EUR for comparison
+    const sourcePriceEUR = normalizePriceToEUR(sourcePriceNum, sourceCurrency);
+    const targetPriceEUR = normalizePriceToEUR(targetPriceNum, targetCurrency);
+
+    if (sourcePriceEUR === null || targetPriceEUR === null) {
+        if (debugLog) console.log('❌ Currency conversion failed:', { sourcePriceEUR, targetPriceEUR });
+        return {
+            isValid: false,
+            reason: 'CURRENCY_CONVERSION_FAILED',
+            details: { sourcePriceEUR, targetPriceEUR }
+        };
+    }
+
+    // Calculate thresholds
+    const minimumPrice = Number(targetPriceEUR) * lowerThreshold;
+    const maximumPrice = Number(targetPriceEUR) * upperThreshold;
+
+    // Ensure all values are numbers before using toFixed
+    const sourcePriceEURNum = Number(sourcePriceEUR);
+    const targetPriceEURNum = Number(targetPriceEUR);
+    const minimumPriceNum = Number(minimumPrice);
+    const maximumPriceNum = Number(maximumPrice);
+
+    // Perform validation
+    const isTooLow = sourcePriceEURNum < minimumPriceNum;
+    const isTooHigh = sourcePriceEURNum > maximumPriceNum;
+    const isValid = !isTooLow && !isTooHigh;
+
+    if (debugLog) {
+        console.log('Price validation:', {
+            sourcePriceEUR: sourcePriceEURNum.toFixed(2),
+            targetPriceEUR: targetPriceEURNum.toFixed(2),
+            minimumPrice: minimumPriceNum.toFixed(2),
+            maximumPrice: maximumPriceNum.toFixed(2),
+            isValid,
+            isTooLow,
+            isTooHigh
+        });
+    }
+
+    return {
+        isValid,
+        reason: isValid ? 'VALID' : (isTooLow ? 'TOO_LOW' : 'TOO_HIGH'),
+        details: {
+            sourcePriceEUR: sourcePriceEURNum.toFixed(2),
+            targetPriceEUR: targetPriceEURNum.toFixed(2),
+            minimumPrice: minimumPriceNum.toFixed(2),
+            maximumPrice: maximumPriceNum.toFixed(2),
+            difference: ((sourcePriceEURNum - targetPriceEURNum) / targetPriceEURNum * 100).toFixed(2) + '%'
+        }
+    };
+} */
+
+/* function findGTINFromJSONLD() {
+    console.log('Gtin from JSON LD initiated')
+	try {
+        const scripts = Array.from(document.querySelectorAll('script[type="application/ld+json"]'));
+        for (const script of scripts) {
+            try {
+                const parsedData = JSON.parse(script.textContent);
+                // Normalize to an array if it's not already one
+                const dataArray = Array.isArray(parsedData) ? parsedData : [parsedData];
+                
+                console.log('Parsed JSON-LD data:', dataArray);
+                
+                // Iterate through each item in the array
+                for (const data of dataArray) {
+                    // Case 1: ProductGroup with variants
+                    if (data['@type'] === 'ProductGroup' && data.hasVariant) {
+                        const variants = Array.isArray(data.hasVariant) ? data.hasVariant : [data.hasVariant];
+                        for (const variant of variants) {
+                            if (variant.offers) {
+                                // Normalize offers to an array
+                                const offers = Array.isArray(variant.offers) ? variant.offers : [variant.offers];
+                                for (const offer of offers) {
+                                    if (offer.gtin) {
+                                        console.log('✅ Found GTIN in product variant offer:', offer.gtin);
+                                        productInfo.gtin.push({
+                                            value: offer.gtin,
+                                            source: 'JSON-LD Product Variant Offer',
+                                            url: window.location.href
+                                        });
+                                        return offer.gtin;
+                                    } else {
+                                        console.log('❌ GTIN not found in offer:', offer);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Case 2: Single Product schema
+                    if (data['@type'] === 'Product') {
+                        if (data.gtin) {
+                            console.log('✅ Found GTIN in product schema:', data.gtin);
+                            productInfo.gtin.push({
+                                value: data.gtin,
+                                source: 'JSON-LD Product',
+                                url: window.location.href
+                            });
+                            return data.gtin;
+                        }
+                    }
+                }
+                
+                // Fallback: Search for 13-digit numbers in the JSON-LD data
+                const jsonString = JSON.stringify(dataArray);
+                const regex = /\b\d{13}\b/g; // Matches 13-digit numbers
+                const matches = jsonString.match(regex);
+                if (matches && matches.length > 0) {
+                    console.log('✅ Found 13-digit number(s) as fallback:', matches);
+                    productInfo.gtin.push({
+                        value: matches[0],
+                        source: 'Fallback 13-digit number',
+                        url: window.location.href
+                    });
+                    return matches[0];
+                }
+            } catch (e) {
+                console.error('Error parsing individual JSON-LD script:', e);
+            }
+        }
+    } catch (e) {
+        console.error('Error accessing scripts:', e);
+    }
+    return null;
+} */
+
+function findGTIN() {
+    // Return cached GTIN if we already found one
+    if (cachedGTIN) {
+        console.log('✅ Using cached GTIN:', cachedGTIN);
+        return cachedGTIN;
+    }
+
+    // Check if we've exceeded the maximum attempts
+    if (gtinSearchAttempts >= MAX_GTIN_SEARCH_ATTEMPTS) {
+        console.log('🛑 Maximum GTIN search attempts reached');
+        return null;
+    }
+    gtinSearchAttempts++;
+
+    console.log('🔄 Searching for GTIN...');
+
+    // Reset GTIN list before extracting new GTINs
+    productInfo.gtin = [];
+
+    // 1. Try to find GTIN in a table cell labeled "EAN"
+    const eanRows = document.querySelectorAll('tr');
+    for (const row of eanRows) {
+        const cells = row.getElementsByTagName('td');
+        if (cells.length >= 2 && cells[0].textContent.trim().toLowerCase() === 'ean') {
+            const gtin = cells[1].textContent.trim().replace(/[^0-9]/g, '');
+            if (gtin.length >= 8 && gtin.length <= 14) {
+                console.log(`✅ Found GTIN from table: ${gtin}`);
+                productInfo.gtin.push({
+                    value: gtin,
+                    source: 'Table EAN cell',
+                    url: window.location.href
+                });
+                cachedGTIN = gtin;
+                return gtin;
+            }
+        }
+    }
+
+    // 2. Bike-Discount specific: check for netz-ean element
+    if (window.location.hostname.includes('bike-discount.de')) {
+        const netzEan = document.querySelector('.netz-ean');
+        if (netzEan) {
+            const gtin = netzEan.textContent?.trim().replace(/[^0-9]/g, '') || '';
+            if (gtin.length >= 8 && gtin.length <= 14) {
+                console.log(`✅ Found GTIN from netz-ean: ${gtin}`);
+                productInfo.gtin.push({
+                    value: gtin,
+                    source: 'netz-ean class',
+                    url: window.location.href
+                });
+                cachedGTIN = gtin;
+                return gtin;
+            }
+        }
+    }
+
+    // 3. Other HTML selectors
+    const gtinSelectors = [
+        '[itemprop="gtin13"]', '[itemprop="gtin"]', '[itemprop="gtin8"]',
+        '[itemprop="gtin12"]', '[itemprop="gtin14"]', '.netz-ean',
+        '[data-ean]', 'span[itemprop="productID"]', 'meta[property="product:ean"]',
+        'meta[property="og:ean"]', '.ean-code', '.product-ean',
+        '[data-gtin]', '.gtin-code', '.product-gtin', 'span.ean', 'div.ean',
+        'p.ean', '[data-product-code]', '[data-barcode]', 'meta[name="gtin"]',
+        'meta[name="ean"]', '[itemprop="productID"]', '.barcode-number',
+        '.product-barcode', 'span[data-ean]', 'div[data-gtin]', '.code-ean',
+        '.sku-ean', '[data-product-ean]', 'meta[property="product:barcode"]',
+        '.gtin', '.product-identifier', '[data-identifier]', 'span.product-code',
+        'div.product-code','td.col.data[data-th="EAN"]'
+    ];
+
+    console.log("🔍 Searching for GTIN using HTML selectors...");
+    for (const selector of gtinSelectors) {
+        const element = document.querySelector(selector);
+        if (element) {
+            let gtin = element.textContent?.trim().replace(/[^0-9]/g, '') || '';
+            let attrValue = element.getAttribute("content")?.trim() ||
+                            element.getAttribute("data-ean")?.trim() ||
+                            element.getAttribute("data-gtin")?.trim() ||
+                            element.getAttribute("value")?.trim() || '';
+            let finalGTIN = attrValue || gtin;
+            if (finalGTIN.length >= 8 && finalGTIN.length <= 14) {
+                console.log(`✅ Found GTIN: ${finalGTIN} (Selector: '${selector}')`);
+                productInfo.gtin.push({
+                    value: finalGTIN,
+                    source: `HTML Selector: ${selector}`,
+                    url: window.location.href
+                });
+                // Do not return immediately; we want to allow the JSON‑LD method to run if no valid GTIN is returned by our cache logic.
+            }
+        }
+    }
+
+    // 4. If no GTIN was found in the HTML, check JSON-LD scripts
+    console.log("🔍 No GTIN found in HTML. Checking JSON-LD...");
+    let foundGtinFromJSONLD = null;
+    const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+    for (let i = 0; i < scripts.length; i++) {
+        try {
+            const parsedData = JSON.parse(scripts[i].textContent);
+            // Normalize to an array if not already
+            const dataArray = Array.isArray(parsedData) ? parsedData : [parsedData];
+            console.log('Parsed JSON-LD data:', dataArray);
+            for (const data of dataArray) {
+                // Case A: ProductGroup with variants
+                if (data['@type'] === 'ProductGroup' && data.hasVariant) {
+                    const variants = Array.isArray(data.hasVariant) ? data.hasVariant : [data.hasVariant];
+                    for (const variant of variants) {
+                        if (variant.offers) {
+                            const offers = Array.isArray(variant.offers) ? variant.offers : [variant.offers];
+                            for (const offer of offers) {
+                                if (offer.gtin) {
+                                    console.log('✅ Found GTIN in JSON-LD product variant offer:', offer.gtin);
+                                    productInfo.gtin.push({
+                                        value: offer.gtin,
+                                        source: `JSON-LD Script #${i + 1} (Variant Offer)`,
+                                        url: window.location.href
+                                    });
+                                    foundGtinFromJSONLD = offer.gtin;
+                                    break;
+                                } else {
+                                    console.log('❌ GTIN not found in JSON-LD variant offer:', offer);
+                                }
+                            }
+                        }
+                        if (foundGtinFromJSONLD) break;
+                    }
+                }
+                // Case B: Single Product schema
+                if (!foundGtinFromJSONLD && data['@type'] === 'Product') {
+                    if (data.gtin) {
+                        console.log('✅ Found GTIN in JSON-LD product schema:', data.gtin);
+                        productInfo.gtin.push({
+                            value: data.gtin,
+                            source: `JSON-LD Script #${i + 1} (Product)`,
+                            url: window.location.href
+                        });
+                        foundGtinFromJSONLD = data.gtin;
+                        break;
+                    }
+                }
+            }
+            // Fallback: use regex to find any 13-digit number if still not found
+            if (!foundGtinFromJSONLD) {
+                const jsonString = JSON.stringify(dataArray);
+                const regex = /\b\d{13}\b/g;
+                const matches = jsonString.match(regex);
+                if (matches && matches.length > 0) {
+                    console.log('✅ Found fallback 13-digit number(s) in JSON-LD:', matches);
+                    productInfo.gtin.push({
+                        value: matches[0],
+                        source: 'Fallback 13-digit number in JSON-LD',
+                        url: window.location.href
+                    });
+                    foundGtinFromJSONLD = matches[0];
+                }
+            }
+        } catch (e) {
+            console.error(`❌ Error parsing JSON-LD script #${i + 1}:`, e);
+        }
+        if (foundGtinFromJSONLD) break;
+    }
+
+    // Cache and return the found GTIN if found either by HTML or JSON-LD
+    const foundGTIN = productInfo.gtin.length > 0 ? productInfo.gtin[0].value : null;
+    if (foundGTIN) {
+        cachedGTIN = foundGTIN;
+    }
+    console.log("Found GTINs:", productInfo.gtin);
+    return foundGTIN;
+}
+
+
+function extractGTINFromJSON(json) {
+    if (!json) return null;
+
+    if (json.gtin13) return json.gtin13;
+    if (json.gtin) return json.gtin;
+    if (json.gtin8) return json.gtin8;
+    if (json.gtin12) return json.gtin12;
+    if (json.gtin14) return json.gtin14;
+    if (json.productID && json.productID.match(/^\d{8,14}$/)) return json.productID;
+    
+    if (json.offers) {
+        if (Array.isArray(json.offers)) {
+            for (const offer of json.offers) {
+                let gtin = extractGTINFromJSON(offer);
+                if (gtin) return gtin;
+            }
+        } else {
+            let gtin = extractGTINFromJSON(json.offers);
+            if (gtin) return gtin;
+        }
+    }
+
+    if (Array.isArray(json)) {
+        for (const obj of json) {
+            let gtin = extractGTINFromJSON(obj);
+            if (gtin) return gtin;
+        }
+    }
+
+    return null;
+}
+
+function waitForGTIN(callback, maxRetries = 10, interval = 500) {
+    let attempts = 0;
+    let observer = null;
+    
+    console.log("🔍 Starting GTIN search...");
+
+    const checkGTIN = () => {
+        let gtin = findGTIN();
+        if (gtin) {
+            console.log(`✅ GTIN found after ${attempts + 1} attempts: ${gtin}`);
+            if (observer) observer.disconnect(); // Stop observing if GTIN is found
+            callback(gtin);
+        } else if (attempts < maxRetries) {
+            attempts++;
+            console.log(`🔄 GTIN not found. Retrying... (${attempts}/${maxRetries})`);
+            setTimeout(checkGTIN, interval);
+        } else {
+            console.log("❌ GTIN not found after max retries. Watching for DOM changes...");
+            
+            // Ensure we only attach one observer at a time
+            if (!observer) {
+                observer = new MutationObserver(() => {
+                    let dynamicGTIN = findGTIN();
+                    if (dynamicGTIN) {
+                        console.log(`✅ GTIN dynamically found: ${dynamicGTIN}`);
+                        observer.disconnect();
+                        callback(dynamicGTIN);
+                    }
+                });
+
+                observer.observe(document.body, { childList: true, subtree: true });
+            }
+        }
+    };
+
+    checkGTIN();
+}
+
+// 🔥 Start GTIN detection with automatic retries & DOM watching
+waitForGTIN(gtin => console.log("GTIN found dynamically:", gtin));
+
+
 
 
 // Function to find and store Price
@@ -164,20 +976,23 @@ function findMPN() {
     for (const selector of mpnSelectors) {
         const mpnElement = document.querySelector(selector);
         if (mpnElement) {
-            const mpnValue = mpnElement.textContent.trim() || 
+            const mpnValue = mpnElement.textContent?.trim() || 
                              mpnElement.getAttribute('content') || 
                              mpnElement.getAttribute('data-ean');
-            console.log('MPN found with selector', selector, ':', mpnValue);
-            return mpnValue;
+
+            if (mpnValue) {
+                console.log(`✅ Found MPN: ${mpnValue} (Selector: '${selector}')`);
+                return mpnValue; // STOP once we find a valid MPN
+            }
         }
     }
 
-    console.log('No MPN found');
+    console.log('❌ No MPN found');
     return null;
 }
  
 const PriceTracker = (function() {
-    async function trackClick(store, productUrl, productName, price, gtin, mpn) {
+    async function trackClick(store, productUrl, productName, price, gtin, mpn, referrer) {
         try {
             const clickData = {
                 store: store,
@@ -186,7 +1001,7 @@ const PriceTracker = (function() {
                 price: price,
                 gtin: gtin,
                 mpn: mpn,
-                referringUrl: window.location.href  
+                referrer: referrer
             };
             
             console.log('Sending data:', clickData); 
@@ -199,7 +1014,6 @@ const PriceTracker = (function() {
                 body: JSON.stringify(clickData)
             });
             
-           
             const responseText = await response.text();
             console.log('Raw response:', responseText);
             
@@ -222,30 +1036,43 @@ const PriceTracker = (function() {
         }
     }
 
-function handleClick(event) {
-    const link = event.currentTarget;
-    // Prevent default only if we successfully get all data
-    try {
-        const store = link.getAttribute('data-store');
-        const url = link.getAttribute('data-url');
-        const name = link.getAttribute('data-name');
-        const price = link.getAttribute('data-price');
-        const gtin = document.querySelector('meta[itemprop="gtin13"]')?.getAttribute('content');
-        const mpn = document.querySelector('[itemprop="mpn"]')?.getAttribute('content');
+    function handleClick(event) {
+        const link = event.currentTarget;
+        try {
+            const store = link.getAttribute('data-store');
+            const url = link.getAttribute('data-url');
+            const name = link.getAttribute('data-name');
+            const price = link.getAttribute('data-price');
+            const gtin = link.getAttribute('data-gtin');
+            const mpn = link.getAttribute('data-mpn');
+			const referrer = link.getAttribute('data-referrer');
+            // Get the current domain as the referrer
+            
 
-        if (!store || !url) {
-            console.error('Missing required tracking data');
-            return;
+            if (!store || !url) {
+                console.error('Missing required tracking data');
+                return;
+            }
+
+            // Log the collected data
+            console.log('Tracking click:', { store, url, name, price, gtin, mpn, referrer });
+
+            // Prevent default navigation temporarily
+            event.preventDefault();
+
+            // Track click then navigate
+            trackClick(store, url, name, price, gtin, mpn, referrer)
+                .then(() => {
+                    window.location.href = url;
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    window.location.href = url; // Navigate anyway
+                });
+        } catch (error) {
+            console.error('Error in click handler:', error);
         }
-
-        // Log the collected data
-        console.log('Tracking click:', { store, url, name, price, gtin, mpn });
-
-        trackClick(store, url, name, price, gtin, mpn);
-    } catch (error) {
-        console.error('Error in click handler:', error);
     }
-}
 
     function attachTrackingHandlers() {
         try {
@@ -264,26 +1091,26 @@ function handleClick(event) {
 
     return {
         attachTrackingHandlers: attachTrackingHandlers,
-        // Expose for debugging
         _debug: {
             trackClick,
             handleClick
         }
     };
-})();
+})(); 
+
+// Initialize tracking
+document.addEventListener('DOMContentLoaded', () => {
+    PriceTracker.attachTrackingHandlers();
+});
 
 function addUTMParameters(originalUrl) {
     try {
         // Use the findGTIN() function to get the GTIN value
         const gtinValue = findGTIN();
-
-        // Use findMPN() as fallback if no GTIN found
-        const mpnValue = findMPN();
-
         const productName = findProductName() || 'unknown_product';
 
-        // Search identifier is GTIN if available, otherwise MPN
-        const searchIdentifier = gtinValue || mpnValue || 'unknown_identifier';
+        // Search identifier is GTIN only
+        const searchIdentifier = gtinValue || 'unknown_identifier';
 
         // Define UTM parameters
         const utm = {
@@ -303,7 +1130,7 @@ function addUTMParameters(originalUrl) {
         });
 
         // Optional: Add additional tracking parameters
-        urlObject.searchParams.append('ref', 'cykelgear_price_comparison');
+        urlObject.searchParams.append('ref', 'bike_parts_price_comparison');
         urlObject.searchParams.append('tracking_id', Math.random().toString(36).substring(2, 15) + 
                                                      Math.random().toString(36).substring(2, 15));
 
@@ -321,7 +1148,7 @@ function generateTrackingId() {
            Math.random().toString(36).substring(2, 15);
 }
 
-function findMPN() {
+/* function findMPN() {
     const mpnSelectors = [
         '[itemprop="mpn"]',
         '[itemprop="sku"]',
@@ -354,9 +1181,9 @@ function findMPN() {
     // If no MPN found, log and return null
     console.log('No MPN found');
     return null;
-}
+} */
 
-function extractProductData() {
+/* function extractProductData() {
     const gtin = findGTIN(); // Prioritize GTIN
 
     if (gtin) {
@@ -371,99 +1198,99 @@ function extractProductData() {
             console.log('No GTIN or MPN found, cannot proceed.');
         }
     }
+} */
+
+
+function checkIdentifiers() {
+    findGTIN();  // This now collects GTINs into productInfo
+    findMPN();   // This should collect MPNs into productInfo
+
+    console.log('Found product identifiers:', {
+        gtins: productInfo.gtin,
+        mpns: productInfo.mpn
+    });
+
+    // If you still need a single primary identifier for some purposes
+    return {
+        primaryIdentifier: productInfo.gtin[0]?.value || productInfo.mpn[0]?.value || null,
+        type: productInfo.gtin[0] ? 'GTIN' : (productInfo.mpn[0] ? 'MPN' : null)
+    };
 }
 
 
-
-function convertPrice(price) {
-    const EUR_TO_DKK_RATE = 7.45;
-
-    if (!price) return "No match";
+function convertPrice(priceText) {
+    if (!priceText) return { convertedPrice: "No match", eurValue: null, dkkValue: null };
 
     try {
-        if (price.toLowerCase().includes('€')) {
-            const numericPrice = parseFloat(price.replace(/[^\d.,-]/g, '').replace(',', '.'));
-            if (!isNaN(numericPrice)) {
-                const dkkPrice = numericPrice * EUR_TO_DKK_RATE;
-                return {
-                    convertedPrice: `${dkkPrice.toFixed(2)} DKK`,
-                    originalValue: numericPrice,
-                    eurValue: numericPrice
-                };
-            }
+        // Normalize the price first
+        const numericPrice = normalizePrice(priceText);
+        if (numericPrice === null) {
+            return { convertedPrice: "No match", eurValue: null, dkkValue: null };
         }
 
-        if (price.toLowerCase().includes('kr')) {
-            const numericPrice = parseFloat(price.replace(/[^\d.,-]/g, '').replace(',', '.'));
-            if (!isNaN(numericPrice)) {
-                const eurPrice = numericPrice / EUR_TO_DKK_RATE;
-                return {
-                    convertedPrice: `${eurPrice.toFixed(2)} €`,
-                    originalValue: numericPrice,
-                    eurValue: eurPrice
-                };
-            }
+        // Determine if it's EUR or DKK based on the original text
+        const isEUR = priceText.includes('€');
+        
+        if (isEUR) {
+            return {
+                convertedPrice: `${(numericPrice * EXCHANGE_RATES.EUR_TO_DKK).toFixed(2)}`,
+                eurValue: numericPrice,
+                dkkValue: numericPrice * EXCHANGE_RATES.EUR_TO_DKK
+            };
         }
 
-        return "No match";
+        // If price contains 'kr', it's already DKK
+        if (priceText.includes('kr')) {
+            return {
+                convertedPrice: numericPrice.toFixed(2),
+                eurValue: (numericPrice / EXCHANGE_RATES.EUR_TO_DKK).toFixed(2),
+                dkkValue: numericPrice
+            };
+        }
+
+        // Default case: assume it's in EUR
+        return {
+            convertedPrice: `${(numericPrice * EXCHANGE_RATES.EUR_TO_DKK).toFixed(2)}`,
+            eurValue: numericPrice,
+            dkkValue: numericPrice * EXCHANGE_RATES.EUR_TO_DKK
+        };
     } catch (error) {
         console.error('Error converting price:', error);
-        return "No match";
+        return { convertedPrice: "No match", eurValue: null, dkkValue: null };
     }
 }
 
-
-function validatePrice(sitePrice, cykelgearPrice) {
-    if (sitePrice === "No match" || !cykelgearPrice) {
-        return true;  // Allow display if either price is missing
-    }
-
-    // Extract numeric value
-    const sitePriceEUR = sitePrice.eurValue;
-    
-    // Convert Cykelgear's DKK price to EUR for comparison
-    const cykelgearPriceEUR = cykelgearPrice / EUR_TO_DKK_RATE;
-
-    // Check if the site's price is 80% lower or higher than Cykelgear's price
-    const tooLow = sitePriceEUR < (cykelgearPriceEUR * 0.2);
-    const tooHigh = sitePriceEUR > (cykelgearPriceEUR * 1.8);
-
-    return !tooLow && !tooHigh;  // Return true only if price is within acceptable range
-}
 
 function findProductName() {
     const productNameSelectors = [
         'h1.product-title',
         'h1[itemprop="name"]',
+        'h1.page-title span',  // Added for AllBike
         'h1',
-        '.product--title',  // Bike-Discount specific
+        '.product--title',
         '.product-details h1'
     ];
 
     for (const selector of productNameSelectors) {
         const nameElement = document.querySelector(selector);
         if (nameElement) {
-            // Get and clean up product name (trim and normalize spaces)
             const productName = nameElement.textContent.trim().replace(/\s+/g, ' ');
-            
-            // If the product name is empty after trimming, skip this selector
             if (productName) {
-                console.log(`Product name found with selector ${selector}:`, productName);
+                console.log(`✅ Product name found with selector ${selector}:`, productName);
+                productInfo.product.name = productName; // Store the name
                 return productName;
-            } else {
-                console.log(`Empty product name found with selector ${selector}`);
             }
         }
     }
 
-    console.log('Could not find product name');
+    console.log('❌ Could not find product name');
     return null;
 }
 
 
 
 
-function findMPN() {
+/* function findMPN() {
     // Try to get the MPN (Sku) from the <span itemprop="sku">
     const mpn = document.querySelector('[itemprop="sku"]');
     if (mpn) {
@@ -502,12 +1329,12 @@ function findMPN() {
     // If no MPN is found, return null
     console.log('No MPN found');
     return null;
-}
+} */
 
 
 // Main extraction function
 function extractProductData() {
-    const gtin = findGTIN(); // Prioritize GTIN
+    const gtin = findGTIN();
     
     // Only check MPN if GTIN was No match
     let mpn = null;
@@ -627,610 +1454,949 @@ function extractProductData() {
 // Call the main function when the page is loaded or ready
 extractProductData();
 
+async function searchWithIdentifier(identifier, identifierType) {
+    console.log(`🔍 Starter søgning efter ${identifier} (${identifierType})`);
 
-// Helper function to search for prices with identifier
-async function searchWithIdentifier(identifier, idType) {
-    console.log(`Starting search for ${identifier} (${idType})`);
+    // Clean the identifier
+    const cleanIdentifier = identifier.replace(/^Item number:\s*/i, '').trim();
 
-    const bikeDiscountPromise = new Promise(resolve => {
-        console.log('Sending request to Bike-Discount...');
-        browser.runtime.sendMessage({ 
-            action: 'findPrice', 
-            identifier: identifier, 
-            url: 'https://www.bike-discount.de/en/search?sSearch=' + identifier 
-        }, response => {
-            if (chrome.runtime.lastError) {
-                console.error('Error sending message to Bike-Discount:', chrome.runtime.lastError);
-                resolve({ html: null, url: 'https://www.bike-discount.de/en/search?sSearch=' + identifier });
-                return;
-            }
-            console.log('Raw Bike-Discount response:', response);
-            if (response?.html) {
-                console.log('Bike-Discount HTML received, length:', response.html.length);
-                const doc = new DOMParser().parseFromString(response.html, 'text/html');
-                const eanElements = doc.querySelectorAll('.netz-ean, [data-ean], .pd-ean');
-                console.log('Found EAN elements on Bike-Discount:', eanElements.length);
-                eanElements.forEach(el => {
-                    console.log('EAN element content:', el.textContent);
+    // Only search enabled shops
+    const activeShops = SHOPS.filter(shop => !enabledShops.hasOwnProperty(shop.domain) || enabledShops[shop.domain]);
+
+    // Make all requests in parallel
+    const responses = await Promise.all(
+        activeShops.map(async shop => {
+            try {
+                console.log(`🔎 Søger på ${shop.name} med selector: ${shop.priceSelector}...`);
+                const url = shop.domain === 'r2-bike.com' 
+                    ? buildSearchUrl(shop, cleanIdentifier, cleanIdentifier)  // Use GTIN for R2 Bike
+                    : shop.url + encodeURIComponent(cleanIdentifier);  // Use regular search for other shops
+                const response = await browser.runtime.sendMessage({
+                    action: 'findPrice',
+                    identifier: cleanIdentifier,
+                    url: url
                 });
+                return response || { html: null, url: shop.url + encodeURIComponent(cleanIdentifier) };
+            } catch (error) {
+                console.error(`❌ Fejl ved søgning på ${shop.name}:`, error);
+                return { html: null, url: shop.url + encodeURIComponent(cleanIdentifier) };
             }
-            resolve(response);
-        });
-    });
+        })
+    );
 
-    const bikeComponentsPromise = new Promise(resolve => {
-        browser.runtime.sendMessage({ 
-            action: 'findPrice', 
-            identifier: identifier, 
-            url: 'https://www.bike-components.de/en/s/?keywords=' + identifier 
-        }, response => {
-            if (browser.runtime.lastError) {
-                console.error('Error sending message to Bike-Components:', browser.runtime.lastError);
-                resolve({ html: null, url: 'https://www.bike-components.de/en/s/?keywords=' + identifier });
-                return;
-            }
-            resolve(response);
-        });
-    });
-
-    const cykelGearPromise = new Promise(resolve => {
-        browser.runtime.sendMessage({ 
-            action: 'findPrice', 
-            identifier: identifier, 
-            url: 'https://cykelgear.dk/search?q=' + identifier 
-        }, response => {
-            if (browser.runtime.lastError) {
-                console.error('Error sending message to cykelgear:', browser.runtime.lastError);
-                resolve({ html: null, url: 'https://cykelgear.dk/search?q=' + identifier });
-                return;
-            }
-            resolve(response);
-        });
-    });
-
-    const responses = await Promise.all([bikeDiscountPromise, bikeComponentsPromise, cykelGearPromise]);
-
-    let foundPrice = false;
-    for (const response of responses) {
-        if (response && response.html) {
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(response.html, 'text/html');
-
-            let priceElement;
-            if (response.url.includes('bike-discount')) {
-                priceElement = doc.querySelector('.price--default') || 
-                               doc.querySelector('[data-test="product-price"]') || 
-                               doc.querySelector('.price');
-            } else if (response.url.includes('bike-components')) {
-                priceElement = doc.querySelector('.price.site-price');
-            } else if (response.url.includes('cykelgear')) {
-                priceElement = doc.querySelector('.text-lg.md\\:text-xl.leading-5.font-semibold.text-orange.whitespace-nowrap');
-            }
-
-            if (priceElement && priceElement.textContent.trim()) {
-                foundPrice = true;
-                break;
-            }
-        }
-    }
-
-    return { responses, foundPrice };
+    return {
+        responses,
+        foundPrice: responses.some(res => res?.html)
+    };
 }
 
-function findGTINFromJSONLD() {
-    const scripts = document.querySelectorAll('script[type="application/ld+json"]');
-    for (const script of scripts) {
-        try {
-            const data = JSON.parse(script.textContent);
-            if (data['@type'] === 'Product' && data.gtin13) {
-                return data.gtin13;
-            }
-        } catch (e) {
-            console.error('Error parsing JSON-LD:', e);
-        }
-    }
-    return null;
-}
+
+
+
+
+
+
+
 
 
 // Hovedfunktion til at finde og sammenligne pris
 async function findAndComparePrice() {
-    console.log('findAndComparePrice startet...');
+    try {
+        showLoadingState();
+        console.log('🔍 Starter prissammenligning...');
 
-    if (!window.location.href.includes('cykelgear.dk') && !window.location.href.includes('bikable') && !window.location.href.includes('bike-discount')) {
-        console.log('Forkert side, stopper.');
-        return;
-    }
+        // Clear previous price data before fetching new ones
+        let priceResults = [];
 
-    //  Find produktnavn
-    const productName = findProductName();
-    console.log('Produktnavn fundet:', productName);
+        const allowedShops = SHOPS.map(shop => shop.domain);
+        const isAllowed = allowedShops.some(domain => window.location.href.includes(domain));
 
-    // Find GTIN og MPN
-    let gtin = findGTIN();
-    let mpn = findMPN();
-    let searchIdentifier = gtin || mpn;
-    let identifierType = gtin ? "GTIN" : "MPN";
-
-    console.log(`🔍 Bruger ${identifierType}:`, searchIdentifier);
-
-    if (!searchIdentifier) {
-        console.log('❌ Ingen GTIN eller MPN fundet på denne side.');
-        return;
-    }
-
-    // 🚧 Undgå at søge efter samme GTIN flere gange
-    if (processedGTINs.has(searchIdentifier)) {
-        console.log(`⚠️ ${identifierType} ${searchIdentifier} er allerede behandlet. Skipping.`);
-        return;
-    }
-
-    processedGTINs.set(searchIdentifier, true); // Markér som behandlet
-
-    // 🔍 Søg efter produktet på Bike Discount
-    const { responses: primaryResponses, foundPrice: primaryFound } = await searchWithIdentifier(searchIdentifier, identifierType);
-
-    // Hvis vi søgte med GTIN men ikke fandt en pris, prøv MPN som fallback
-    if (identifierType === "GTIN" && !primaryFound && mpn) {
-        console.log('❌ Ingen priser fundet med GTIN. Prøver MPN fallback...');
-        const { responses: fallbackResponses, foundPrice: fallbackFound } = await searchWithIdentifier(mpn, "MPN");
-
-        if (fallbackFound) {
-            identifierType = "MPN (fra GTIN)";
-            searchIdentifier = mpn;
-            displayPrice(fallbackResponses, mpn, identifierType);
+        if (!isAllowed) {
+            console.log('❌ Forkert side, stopper.');
             return;
         }
-    }
 
-    // Hvis vi fandt en pris, vis den på siden
-    displayPrice(primaryResponses, searchIdentifier, identifierType);
+        // Find produktnavn
+        const productName = findProductName();
+        console.log('📌 Produktnavn fundet:', productName);
+
+        // Find GTIN og MPN
+        let gtin = findGTIN();
+        let searchIdentifier = gtin;
+        let identifierType = gtin ? "GTIN" : "MPN";
+
+        console.log(`🔍 Bruger ${identifierType}:`, searchIdentifier);
+
+        // Hvis ingen GTIN eller MPN findes, vis Google-søgning
+        if (!searchIdentifier) {
+            console.log('❌ Ingen GTIN eller MPN fundet.');
+            const errorMessage = `
+                <h4 style="display: inline; font-weight: 700;">Prissammenligning</h4>
+                <p>Vi kunne ikke finde en stegkode eller varenummer for dette produkt.</p>
+                ${productName ? 
+                    `<p><a href="https://www.ecosia.org/search?method=index&q=${encodeURIComponent(gtin)}" target="_blank" title="Søg efter ${productName} på Ecosia">Prøv en web-søgning 🔍</a></p>` : 
+                    ''}
+            `;
+            const shop = SHOPS.find(s => window.location.href.includes(s.domain));
+            if (shop) {
+                insertComparisonTable(shop, errorMessage);
+            } else {
+                console.error('No matching shop found for the current URL');
+            }
+            return;
+        }
+
+        // 🔍 Undgå at søge efter samme GTIN flere gange
+        if (processedGTINs.has(searchIdentifier)) {
+            console.log(`⚠️ ${identifierType} ${searchIdentifier} er allerede behandlet. Skipping.`);
+            return;
+        }
+
+        processedGTINs.set(searchIdentifier, true); // Markér som behandlet
+
+        // 🔄 **Clear previous prices before fetching new ones**
+        document.querySelectorAll('.price-comparison-table').forEach(el => el.remove());
+
+        // 🔍 Fetch new prices
+        const { responses: primaryResponses, foundPrice: primaryFound } = await searchWithIdentifier(searchIdentifier, identifierType);
+
+        // Hvis vi fandt en pris, vis den på siden
+        displayPrice(primaryResponses, searchIdentifier, identifierType);
+    } catch (error) {
+        console.error('Error in price comparison:', error);
+        const errorMessage = `
+            <h4 style="display: inline; font-weight: 700;">Prissammenligning</h4>
+            <p>Der opstod en fejl under hentning af priser. Prøv igen senere.</p>
+        `;
+        const shop = SHOPS.find(s => window.location.href.includes(s.domain));
+        if (shop) {
+            insertComparisonTable(shop, errorMessage);
+        } else {
+            console.error('No matching shop found for the current URL');
+        }
+    } finally {
+        hideLoadingState();
+    }
 }
 
 
-// Call the main function when the page is loaded or ready
-findAndComparePrice();
 
 
-function getCurrentPriceAndCurrency() {
+// New simplified function to scan JSON-LD for GTINs and display with Ecosia links
+function scanAndDisplayGTINs() {
+    console.log('🔍 Scanning JSON-LD for GTINs...');
+    
+    // Remove any existing GTIN display
+    const existingDisplay = document.querySelector('.gtin-display-container');
+    if (existingDisplay) {
+        existingDisplay.remove();
+    }
+    
+    const foundGTINs = new Set(); // Use Set to avoid duplicates
+    
+    // Scan all JSON-LD scripts
     const scripts = document.querySelectorAll('script[type="application/ld+json"]');
     
-    for (const script of scripts) {
+    for (let i = 0; i < scripts.length; i++) {
         try {
-            const data = JSON.parse(script.textContent);
-            if (data['@type'] === 'Product' && data.offers) {
-                return {
-                    price: parseFloat(data.offers.price),
-                    currency: data.offers.priceCurrency
-                };
+            const parsedData = JSON.parse(scripts[i].textContent);
+            const dataArray = Array.isArray(parsedData) ? parsedData : [parsedData];
+            
+            // Recursive function to extract GTINs from any object
+            function extractGTINs(obj, path = '') {
+                if (!obj || typeof obj !== 'object') return;
+                
+                // Check for GTIN properties
+                const gtinFields = ['gtin', 'gtin13', 'gtin8', 'gtin12', 'gtin14'];
+                for (const field of gtinFields) {
+                    if (obj[field]) {
+                        const gtin = String(obj[field]).trim();
+                        // Validate GTIN (typically 8-14 digits)
+                        if (/^\d{8,14}$/.test(gtin)) {
+                            foundGTINs.add(gtin);
+                            console.log(`✅ Found GTIN: ${gtin} (from ${path || 'root'})`);
+                        }
+                    }
+                }
+                
+                // Recursively check nested objects and arrays
+                for (const key in obj) {
+                    if (obj.hasOwnProperty(key)) {
+                        const value = obj[key];
+                        if (Array.isArray(value)) {
+                            value.forEach((item, index) => {
+                                extractGTINs(item, `${path}.${key}[${index}]`);
+                            });
+                        } else if (value && typeof value === 'object') {
+                            extractGTINs(value, path ? `${path}.${key}` : key);
+                        }
+                    }
+                }
             }
+            
+            dataArray.forEach((data, index) => {
+                extractGTINs(data, `script[${i}].item[${index}]`);
+            });
+            
         } catch (e) {
-            console.error('Error parsing JSON-LD:', e);
+            console.error(`❌ Error parsing JSON-LD script #${i + 1}:`, e);
         }
     }
     
-    // Fallback methods
-    const priceSelectors = [
-        '[itemprop="price"]',
-        '.product-price',
-        '.price',
-        '.current-price',
-        '.price--default'
+    // If no GTINs found, don't display anything
+    if (foundGTINs.size === 0) {
+        console.log('ℹ️ No GTINs found in JSON-LD data');
+        return;
+    }
+    
+    // Create display container
+    const container = document.createElement('div');
+    container.className = 'gtin-display-container';
+    container.style.cssText = `
+        margin: 20px 0;
+        padding: 15px;
+        border: 2px solid #f2994b;
+        border-radius: 8px;
+        background-color: #fff;
+        font-family: Arial, sans-serif;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    `;
+    
+    // Create header
+    const header = document.createElement('h3');
+    header.textContent = 'Found GTINs';
+    header.style.cssText = 'margin: 0 0 10px 0; font-size: 18px; color: #333;';
+    container.appendChild(header);
+    
+    // Create list of GTINs with Ecosia search links
+    const list = document.createElement('ul');
+    list.style.cssText = 'list-style: none; padding: 0; margin: 0;';
+    
+    Array.from(foundGTINs).sort().forEach(gtin => {
+        const listItem = document.createElement('li');
+        listItem.style.cssText = 'margin: 8px 0; padding: 8px; background-color: #f9f9f9; border-radius: 4px;';
+        
+        const gtinText = document.createElement('span');
+        gtinText.textContent = `GTIN: ${gtin}`;
+        gtinText.style.cssText = 'font-weight: bold; margin-right: 10px;';
+        
+        const searchLink = document.createElement('a');
+        searchLink.href = `https://www.ecosia.org/search?method=index&q=${encodeURIComponent(gtin)}`;
+        searchLink.target = '_blank';
+        searchLink.rel = 'noopener noreferrer';
+        searchLink.textContent = '🔍 Search for this product on Ecosia';
+        searchLink.style.cssText = 'color: #f2994b; text-decoration: none;';
+        searchLink.addEventListener('mouseenter', () => {
+            searchLink.style.textDecoration = 'underline';
+        });
+        searchLink.addEventListener('mouseleave', () => {
+            searchLink.style.textDecoration = 'none';
+        });
+        
+        listItem.appendChild(gtinText);
+        listItem.appendChild(searchLink);
+        list.appendChild(listItem);
+    });
+    
+    container.appendChild(list);
+    
+    // Try to insert near product information, otherwise append to body
+    const productSelectors = [
+        '[itemprop="productID"]',
+        '[itemprop="gtin13"]',
+        '[itemprop="gtin"]',
+        'h1',
+        '.product-title',
+        '.product-name',
+        '[data-product-id]'
     ];
     
-    for (const selector of priceSelectors) {
+    let inserted = false;
+    for (const selector of productSelectors) {
         const element = document.querySelector(selector);
         if (element) {
-            console.log('Found price with selector:', selector);
-            return {
-                price: parseFloat(element.textContent.replace(/[^0-9,.]/g, '').replace(',', '.')),
-                currency: 'EUR' // Add logic to detect currency from page if needed
-            };
+            element.insertAdjacentElement('afterend', container);
+            inserted = true;
+            break;
         }
     }
     
-    console.log('No prices found with any method');
-    return { price: null, currency: null };
-}
-
-
-function validatePrices() {
-   let { price: currentPrice, currency: currentCurrency } = getCurrentPriceAndCurrency();
-   if (!currentPrice) return;
-   console.log('Current price:', currentPrice, 'Currency:', currentCurrency);
-
-   const currentPriceEUR = currentCurrency === 'EUR' ? currentPrice : currentPrice / EUR_TO_DKK_RATE;
-   console.log('Price in EUR:', currentPriceEUR);
-
-   // Bike-Discount validation
-if (typeof bikeDiscountPriceObj !== 'undefined' && bikeDiscountPriceObj !== "No match") {
-        const bikeDiscountValid = validatePrice(bikeDiscountPriceObj, currentPrice);
-        if (!bikeDiscountValid) {
-            const bdPrice = bikeDiscountPriceObj.eurValue;
-            const message = bdPrice > (currentPriceEUR * 1.8) ? "mismatch↑" : "mismatch↓";
-            console.log(`Bike-Discount: Product found with ${identifierType} ${identifier}, price (${bdPrice}€) ${message}`);
-            bikeDiscountPrice = `No match (${message})`;
-            bikeDiscountPriceObj = "No match";
-        } else {
-            console.log(`Bike-Discount: Product found with ${identifierType} ${identifier}, price matches range`);
-        }
+    if (!inserted) {
+        // Fallback: insert at the beginning of body
+        document.body.insertBefore(container, document.body.firstChild);
     }
-
-   // Bike-Components validation
-   if (typeof bikeComponentsPriceObj !== 'undefined' && bikeComponentsPriceObj !== "No match") {
-       const bikeComponentsValid = validatePrice(bikeComponentsPriceObj, currentPrice);
-       if (!bikeComponentsValid) {
-           const bcPrice = bikeComponentsPriceObj.eurValue;
-           const message = bcPrice > (currentPriceEUR * 1.8) ? "mismatch↑" : "mismatch↓";
-           console.log(`Price on Bike-Components is ${message} compared to current site`);
-           bikeComponentsPrice = `No match (${message})`;
-           bikeComponentsPriceObj = "No match";
-       }
-   }
-
-   // Cykelgear validation
-   if (typeof cykelgearPriceObj !== 'undefined' && cykelgearPriceObj !== "No match") {
-       const cykelgearValid = validatePrice(cykelgearPriceObj, currentPrice);
-       if (!cykelgearValid) {
-           const cgPrice = cykelgearPriceObj.eurValue;
-           const message = cgPrice > (currentPriceEUR * 1.8) ? "mismatch↑" : "mismatch↓";
-           console.log(`Price on Cykelgear is ${message} compared to current site`);
-           cykelgearPrice = `No match (${message})`;
-           cykelgearPriceObj = "No match";
-       }
-   }
+    
+    console.log(`✅ Displayed ${foundGTINs.size} GTIN(s)`);
 }
-function displayPrice(responses, identifier, identifierType) {
-   let bikeDiscountPrice = null, bikeDiscountUrl = null, bikeDiscountPriceObj = null;
-   let bikeComponentsPrice = null, bikeComponentsUrl = null, bikeComponentsPriceObj = null;
-   let cykelgearPrice = null, cykelgearUrl = null, cykelgearPriceObj = null;
 
-   // Process responses
-   for (const response of responses) {
-       if (!response?.html) continue;
-       const doc = new DOMParser().parseFromString(response.html, 'text/html');
-       
-       if (response.url.includes('bike-discount')) {
-           processBikeDiscount(doc, response.url);
-       } else if (response.url.includes('bike-components')) {
-           processBikeComponents(doc, response.url);
-       } else if (response.url.includes('cykelgear')) {
-           processCykelgear(doc, response.url);
-       }
-   }
+// Call the simplified GTIN scanner when the page is loaded or ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', scanAndDisplayGTINs);
+} else {
+    scanAndDisplayGTINs();
+}
 
-   // Convert prices
-	bikeDiscountPriceObj = convertPrice(bikeDiscountPrice, 'bike-discount.de');
-	bikeComponentsPriceObj = bikeComponentsPrice ? convertPrice(bikeComponentsPrice, 'bike-components.de') : "No match";
-	cykelgearPriceObj = cykelgearPrice ? convertPrice(cykelgearPrice, 'cykelgear.dk') : "No match";
+// Also scan when page content changes (for SPAs)
+const gtinObserver = new MutationObserver(() => {
+    // Debounce to avoid too many scans
+    clearTimeout(window.gtinScanTimeout);
+    window.gtinScanTimeout = setTimeout(scanAndDisplayGTINs, 500);
+});
 
-   // Validate and prepare display
-   validatePrices();
-   const productName = findProductName();
-   const noProductsFound = (!bikeDiscountPrice || bikeDiscountPrice.includes('No match')) && 
-                          (!bikeComponentsPrice || bikeComponentsPrice.includes('No match')) &&
-                          (!cykelgearPrice || cykelgearPrice.includes('No match'));
+gtinObserver.observe(document.body, {
+    childList: true,
+    subtree: true
+});
 
-   // Generate and insert comparison message
+// Original price comparison function (kept for reference, but not called by default)
+// findAndComparePrice();
+
+
+
 function generateNoProductsMessage(productName) {
     return `
         <div class="no-products-message">
-            <h4>No products found for ${productName || 'this item'}</h4>
-            <p>We couldn't find any matching products at the moment. Please try again later or refine your search.</p>
+            <h4 style="text-align: left !important;">Ingen match på ${productName || 'dette produkt'}</h4>
+            <p style="text-align: left !important;">Vi kunne ikke finde dette produkt på andre shops</p>
         </div>
     `;
 }
 
-const comparisonMessage = noProductsFound ? 
-    generateNoProductsMessage(productName) : 
-    generateComparisonTable(productName, identifierType);
 
-if (!document.querySelector('.price-comparison-table')) {
-    insertPriceComparison(comparisonMessage);
+
+
+function processShopResponse(doc, url) {
+    const shop = SHOPS.find(s => url.includes(s.domain));
+    if (!shop) {
+        console.log("🚨 Unknown shop:", url);
+        return { shop: "Unknown", price: null, eurPrice: "No match", dkkPrice: "No match", shopUrl: url };
+    }
+
+    const priceElement = doc.querySelector(shop.priceSelector);
+    if (!priceElement) {
+        console.log(`❌ No price element found for ${shop.name}`);
+        return { shop: shop.name, price: null, eurPrice: "No match", dkkPrice: "No match", shopUrl: url };
+    }
+
+    let priceText = priceElement.textContent.trim();
+    // Remove "from" or "fra" (case insensitive)
+    priceText = priceText.replace(/^(from|fra)\s*/i, "").trim();
+
+    const priceData = convertPrice(priceText);
+    
+    console.log(`✅ Price found on ${shop.name}:`, {
+        originalText: priceText,
+        eurValue: priceData.eurValue,
+        dkkValue: priceData.dkkValue
+    });
+
+    return {
+        shop: shop.name,
+        price: priceText,
+        eurPrice: priceData.eurValue || "No match",
+        dkkPrice: priceData.dkkValue ? `${priceData.dkkValue.toFixed(2)}` : "No match",
+        shopUrl: url
+    };
 }
 
 
-function processBikeDiscount(doc, url) {
-    console.log('Processing Bike-Discount page');
-    
-    // Tjek om der er et GTIN/EAN element
-    const eanElement = doc.querySelector('.netz-ean') || 
-                      doc.querySelector('[data-ean]') ||
-                      doc.querySelector('.pd-ean');
-                      
-    if (eanElement) {
-        console.log('Found EAN element on Bike-Discount:', eanElement.textContent);
-    } else {
-        console.log('No EAN element found on Bike-Discount');
+function setupProductInfo() {
+    // Get current URL info
+    const currentUrl = window.location.href;
+    const currentDomain = window.location.hostname;
+    const timestamp = new Date().toISOString();
+
+    // Get current shop info from SHOPS array
+    const currentShop = SHOPS.find(shop => currentDomain.includes(shop.domain));
+
+    // Get price information
+    const { price, currency } = getCurrentPriceAndCurrency();
+
+    // Get product name
+    const productName = findProductName();
+
+    // Initialize productInfo
+    productInfo = {
+        gtin: [],        // Will be filled by findGTIN()
+        mpn: [],         // Will be filled by findMPN()
+        shop: {
+            name: currentShop?.name || '',
+            url: currentUrl,
+            domain: currentDomain
+        },
+        price: {
+            amount: price,
+            currency: currency,
+            rawText: '',  // Will be filled by getCurrentPriceAndCurrency
+            source: ''    // Will be filled by getCurrentPriceAndCurrency
+        },
+        product: {
+            name: productName,
+            category: '',  // Could be added if you have category detection
+            brand: ''     // Could be added if you have brand detection
+        },
+        referrer: {
+            url: currentUrl,
+            price: price,
+            timestamp: timestamp
+        },
+        detectedOn: currentDomain,
+        foundTimestamp: timestamp
+    };
+
+    // Find identifiers
+    findGTIN();  // This will populate productInfo.gtin
+    findMPN();   // This will populate productInfo.mpn
+
+    console.log('Product Info Setup Complete:', productInfo);
+}
+
+initializeEnabledShops();
+
+browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.action === 'shopsUpdated') {
+        console.log('Received shop updates:', message.enabledShops);
+        enabledShops = message.enabledShops;
+        // Refresh the price comparison
+        findAndComparePrice();
+    }
+});
+
+function generateComparisonTable(priceResults, identifierType, gtin = null) {
+    console.log("🔍 Running generateComparisonTable()...");
+
+    const productName = productInfo.product.name;
+    const currentDomain = window.location.hostname;
+    const filteredResults = priceResults.filter(result =>
+        !currentDomain.includes(new URL(result.shopUrl).hostname)
+    );
+    const sortedResults = [...filteredResults].sort((a, b) => Number(a.eurPrice) - Number(b.eurPrice));
+
+    // If no products are found, return a "no products" message.
+    if (filteredResults.length === 0) {
+        return `
+            <h4 style="display: inline; font-weight: 700;">Prissammenligning</h4>
+            <p>
+                <a href="https://www.ecosia.org/search?method=index&q=${encodeURIComponent(productName)}" target="_blank" title="Søg efter ${productName} på Ecosia">
+                    Ingen andre butikker at sammenligne med.<br>Prøv en web-søgning 🔍
+                </a>
+            </p>
+        `;
     }
 
-    const noResultsText = doc.body.textContent.includes('No results for');
-    if (noResultsText) {
-        console.log('Bike-Discount: No products found');
-        bikeDiscountPrice = null;
-        bikeDiscountUrl = url;
+    // Get current site's price (if available)
+    const currentShop = SHOPS.find(shop => window.location.hostname.includes(shop.domain));
+    const currentPrice = currentShop ? getCurrentPriceAndCurrency().price : null;
+    const lowestPrice = Math.min(...filteredResults.map(result => Number(result.eurPrice)));
+    const shouldHighlight = currentPrice === null || lowestPrice < currentPrice;
+
+    // Generate a single table row for a shop
+    const generateTableRow = (result, isHidden = false) => {
+        const isLowestPrice = shouldHighlight && Number(result.eurPrice) === lowestPrice;
+        const rowStyle = `${isLowestPrice ? 'font-weight: bold;' : 'font-weight: normal;'} ${isHidden ? 'display: none;' : ''}`;
+        const mpnIndicator = identifierType === "MPN" ? '*' : '';
+
+        return `
+        <tr style="${rowStyle}" class="shop-row ${isHidden ? 'hidden-shop' : ''}">
+            <td style="padding: 5px;">${result.shop}</td>
+            <td style="padding: 5px;">${Number(result.eurPrice).toFixed(2)}${mpnIndicator}</td>
+            <td style="padding: 5px;">${Number(result.dkkPrice).toFixed(2)}${mpnIndicator}</td>
+            <td style="padding: 5px;">
+                ${result.price ? `<a href="${addUTMParameters(result.shopUrl)}"
+                    class="track-click"
+                    data-store="${result.shop}"
+                    data-url="${result.shopUrl}"
+                    data-name="${productName?.replace(/"/g, '&quot;')}"
+                    data-price="${result.price}"
+                    data-price-amount="${result.eurPrice || ''}"
+                    data-price-currency="EUR"
+                    data-gtin="${cachedGTIN}"
+                    data-referrer="${window.location.hostname}"
+                    target="_blank">${window.location.hostname.includes('bike-components') || window.location.hostname.includes('r2-bike') || window.location.hostname.includes('bike-discount') ? 'Vis' : 'Se produkt'}</a>` : "-"}
+            </td>
+        </tr>`;
+    };
+
+    // Create arrays for visible and hidden rows
+    const visibleRows = sortedResults.slice(0, 3).map(result => generateTableRow(result));
+    const hiddenRows = sortedResults.slice(3).map(result => generateTableRow(result, true));
+
+    // Build the toggle button HTML if there are any hidden rows
+    const toggleButtonHtml = hiddenRows.length > 0 ? `
+        <tr id="toggleRow">
+            <td colspan="4" style="text-align: center; padding: 8px;">
+                <a href="#" id="toggleShops" style="color: #f2994b; text-decoration: none; display: flex; align-items: center; justify-content: center;">
+                    Vis alle shops (${hiddenRows.length} mere) ▼
+                </a>
+            </td>
+        </tr>
+    ` : '';
+
+    // Prepare disclaimer text based on identifier type
+    const disclaimerText = identifierType === "MPN" ?
+        `<p style="font-size: 10px;"><strong>*Match fundet via butikkens varenummer - dette er et kvalificeret gæt</strong></p>` :
+        `<p style="font-size: 10px;">Priser kan variere grundet anden model og/eller moms.</p>`;
+
+    // Build the full table HTML with drop shadow added
+    const tableHtml = `
+        <style>
+            .price-comparison-table {
+                font-family: Arial, sans-serif;
+                border-collapse: collapse;
+                width: 100%;
+                border: 1px solid #f2994b;
+                text-align: left !important;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            }
+            .price-comparison-table th, .price-comparison-table td {
+                border: 1px solid #c0c0c0;
+                padding: 1rem;
+                text-align: left !important;
+            }
+            .price-comparison-table th {
+                background-color: #f0f0f0;
+            }
+            .price-comparison-table .shop-row {
+                cursor: pointer;
+            }
+            .price-comparison-table .shop-row:hover {
+                background-color: #f1f1f1;
+            }
+            .price-comparison-table .hidden-shop {
+                display: none;
+            }
+        </style>
+        <h4 style="display: inline; font-weight: 700;">Prissammenligning</h4>
+        <p style="display: inline;">
+            ${productName ?
+                `<a href="https://www.ecosia.org/search?method=index&q=${encodeURIComponent(productName)}" target="_blank" title="Søg efter ${productName} på Ecosia">🔍</a>` :
+                '-'
+            }
+        </p>
+        
+        <table class="price-comparison-table">
+            <tr>
+                <th style="padding: 5px; font-size: 10px;">Forhandler</th>
+                <th style="padding: 5px; font-size: 10px;">Pris i EUR</th>
+                <th style="padding: 5px; font-size: 10px;">Pris i DKK</th>
+                <th style="padding: 5px; font-size: 10px;">Link</th>
+            </tr>
+            ${visibleRows.join('')}
+            ${hiddenRows.join('')}
+            ${toggleButtonHtml}
+        </table>
+        <div class="md:mr-1" style="margin-top: 10px; font-size: 8px !important; color: #666;">
+            <p style="font-size: 10px;">Dette er kun en vejledning. Fast valutakurs på EUR: ${EUR_TO_DKK_RATE}.</p>
+            ${disclaimerText}
+            <p style="font-size: 10px;"><strong>OBS:</strong> Sørg for at vælge Denmark øverst på Bike Discount for at få den korrekte pris.</p>
+        </div>
+    `;
+
+    // Instead of inserting the table directly, return it so displayPrice can use it
+    return tableHtml;
+}
+
+
+
+
+
+function updateTableSafely(newHTML) {
+    // Disconnect observer to prevent it from reacting to our changes
+    if (observer) {
+        observer.disconnect();
+    }
+    const tableContainer = document.querySelector('.price-comparison-table');
+    if (tableContainer) {
+        tableContainer.innerHTML = newHTML;
+    } else {
+        insertComparisonTable(newHTML);
+    }
+/*     // Reattach the observer after a short delay to ensure the update is complete
+    setTimeout(() => {
+        setupMutationObserver();
+    }, 100); */
+}
+
+let retryCount = 0;
+const maxRetries = 10;
+function addDkkPriceDisplay() {
+    console.log('[addDkkPriceDisplay] Starting conversion process.');
+
+    // Determine the current shop from your config
+    const currentShop = SHOPS.find(shop => window.location.hostname.includes(shop.domain));
+    if (!currentShop) {
+        console.log('[addDkkPriceDisplay] No matching shop found for domain:', window.location.hostname);
+        return;
+    }
+    console.log('[addDkkPriceDisplay] Found shop:', currentShop.name);
+
+    let priceElement;
+
+    // If the current shop is Bike-Discount, use the netz-price element,
+    // but if it's not yet available, wait for it.
+    if (currentShop.domain === 'bike-discount.de') {
+        priceElement = document.querySelector('#netz-price');
+        if (!priceElement) {
+            console.log('[addDkkPriceDisplay] #netz-price element not found. Waiting for it to appear...');
+            // Wait a bit and try again
+            setTimeout(addDkkPriceDisplay, 500);
+            return;
+        }
+    } else {
+        // For other shops, use the priceSelector from the shop config.
+        priceElement = document.querySelector(currentShop.priceSelector);
+        if (!priceElement) {
+            console.log('[addDkkPriceDisplay] Price element not found using selector:', currentShop.priceSelector);
+            return;
+        }
+    }
+    console.log('[addDkkPriceDisplay] Price element found:', priceElement);
+
+    // Get the current text content (for example, "15,75 €" or "5.881,31 €")
+    const priceText = priceElement.textContent.trim();
+    console.log('[addDkkPriceDisplay] Original price text:', priceText);
+
+    // Only proceed if the text includes the Euro symbol
+    if (!priceText.includes('€')) {
+        console.log('[addDkkPriceDisplay] Price text does not include Euro symbol.');
         return;
     }
 
-    const priceElement = doc.querySelector('.price--default') || 
-                        doc.querySelector('[data-test="product-price"]') || 
-                        doc.querySelector('.price');
-    const productLink = doc.querySelector('.product--title');
-    bikeDiscountUrl = (productLink?.href || url);
-
-    if (priceElement) {
-        const priceText = priceElement.textContent.trim();
-        const priceMatch = priceText.match(/€\d+([.,]\d+)?/);
-        if (priceMatch) {
-            // Udtræk det numeriske beløb og juster med tysk moms
-            const basePrice = parseFloat(priceMatch[0].replace('€', '').trim());
-            const adjustedPrice = basePrice * 1.05; // Tilføj 5% tysk moms
-            bikeDiscountPrice = `€${adjustedPrice.toFixed(2)}`;
-            console.log('Bike-Discount original price:', basePrice, '€');
-            console.log('Bike-Discount adjusted price (with 5% VAT):', adjustedPrice, '€');
-        }
+    // Check if the converted price is already displayed
+    if (priceText.includes('kr')) {
+        console.log('[addDkkPriceDisplay] Converted price already displayed. Skipping conversion.');
+        return; // Exit if the converted price is already present
     }
-}
 
-function processBikeComponents(doc, url) {
-    const priceElement = doc.querySelector('.price.site-price');
-    const productLink = doc.querySelector('.product-tile__link');
-    bikeComponentsUrl = (productLink?.href || url);
+    // Extract the numeric value using a regular expression that accounts for both comma and dot
+    const match = priceText.match(/([\d.,]+)/);
+    if (!match) {
+        console.log('[addDkkPriceDisplay] No numeric value found in price text.');
+        return;
+    }
+    console.log('[addDkkPriceDisplay] Extracted numeric string:', match[1]);
 
-    if (priceElement) {
-        const priceText = priceElement.textContent.trim();
-        console.log('Raw price text from BC:', priceText); // Debug log
+    // Normalize the numeric string by removing thousands separators and converting decimal separators
+    let numericString = match[1];
+    // Check if the last occurrence of a comma or dot is a decimal separator
+    const lastCommaIndex = numericString.lastIndexOf(',');
+    const lastDotIndex = numericString.lastIndexOf('.');
 
-        // Mere robust pris-udtrækning
-        const priceMatch = priceText.match(/(\d+[.,]?\d*)/);
-        if (priceMatch) {
-            const basePrice = parseFloat(priceMatch[0].replace(',', '.'));
-            if (!isNaN(basePrice)) {
-                bikeComponentsPrice = `€${basePrice.toFixed(2)}`;
-                console.log('Bike-Components price after parsing:', bikeComponentsPrice);
-            } else {
-                bikeComponentsPrice = null;
-                console.log('Could not parse BC price');
-            }
-        } else {
-            bikeComponentsPrice = null;
-            console.log('No price match found in BC text');
-        }
+    if (lastCommaIndex > lastDotIndex) {
+        // Comma is the decimal separator
+        numericString = numericString.replace(/\./g, '').replace(',', '.');
     } else {
-        bikeComponentsPrice = null;
-        console.log('No price element found on BC');
+        // Dot is the decimal separator
+        numericString = numericString.replace(/,/g, '');
     }
-}
 
-   function processCykelgear(doc, url) {
-       const priceElement = doc.querySelector('.text-lg.md\\:text-xl.leading-5.font-semibold.text-orange.whitespace-nowrap');
-       const productLink = doc.querySelector('.product-tile__link');
-       cykelgearUrl = (productLink?.href || url);
+    const numericPrice = parseFloat(numericString);
+    if (isNaN(numericPrice)) {
+        console.log('[addDkkPriceDisplay] Parsed price is NaN for numeric string:', numericString);
+        return;
+    }
+    console.log('[addDkkPriceDisplay] Parsed price (EUR):', numericPrice);
 
-       if (priceElement) {
-           cykelgearPrice = priceElement.textContent.trim();
-           cykelgearPriceObj = convertEurToDkk(cykelgearPrice);
-       }
-   }
+    // Convert the EUR price to DKK using the exchange rate from your config
+    const convertedPrice = numericPrice * EXCHANGE_RATES.EUR_TO_DKK;
+    console.log('[addDkkPriceDisplay] Converted price (DKK):', convertedPrice);
 
-   function generateComparisonTable() {
-       return ` 
-           <td>
-               <h4 style="display: inline; font-weight: 700;">Price Comparison</h4>
-               <p style="display: inline;">
-                   ${productName ? 
-                       `<a href="https://www.google.com/search?q=${encodeURIComponent(productName)}" target="_blank" title="Search for ${(productName)} on Google">🔍</a>` : 
-                       '-'
-                   }
-               </p>
-           </td>
-           <table cellpadding="5" style="border-collapse: separate; border-spacing: 5px;">
-               <tr>
-                   <th style="padding: 5px; font-size: 10px;">Website</th>
-                   <th style="padding: 5px; font-size: 10px;">Price</th>
-                   <th style="padding: 5px; font-size: 10px;">Converted Price</th>
-                   <th style="padding: 5px; font-size: 10px;">Link</th>
-               </tr>
-               ${!window.location.href.includes('bike-discount') ? generateBikeDiscountRow() : ''}
-               ${!window.location.href.includes('bike-components') ? generateBikeComponentsRow() : ''}
-               ${!window.location.href.includes('cykelgear') ? generateCykelgearRow() : ''}
-           </table>
-           <div class="md:mr-12" style="margin-top: 10px; font-size: 8px !important; color: #666;">
-               <p style="font-size: 10px;">Fixed exchange rate of ${EUR_TO_DKK_RATE}.</p>
-               <p style="font-size: 10px;">Prices might be for a different quantity/version (or even product in rare cases) with the same ${identifierType}.</p>
-               <p style="font-size: 10px;">This is only a guide.</p>
-           </div>
-       `;
-   }
-
-   function generateBikeDiscountRow() {
-           const convertedPriceObj = convertPrice(bikeDiscountPrice || 'No match');
-			const convertedPrice = convertedPriceObj.convertedPrice || 'No match';
-	   return `
-    <tr>
-        <td style="padding: 5px;">Bike-Discount</td>
-        <td style="padding: 5px;">${bikeDiscountPrice || 'No match'}</td>
-        <td style="padding: 5px;">${convertedPrice}</td>
-        <td style="padding: 5px;">${bikeDiscountPrice && !bikeDiscountPrice.includes('too') ? 
-            `<a href="${addUTMParameters(bikeDiscountUrl)}" 
-                class="track-click"
-                data-store="Bike-Components"
-                data-url="${bikeDiscountUrl}"
-                data-name="${productName?.replace(/"/g, '&quot;')}"
-                data-price="${bikeDiscountPrice}"
-                target="_blank">View Product</a>` : '-'}</td>
-    </tr>`;
-}
-
-function generateBikeComponentsRow() {
-    const convertedPriceObj = convertPrice(bikeComponentsPrice || 'No match');
-    const convertedPrice = convertedPriceObj.convertedPrice || 'No match';
-    return `
-    <tr>
-        <td style="padding: 5px;">Bike-Components</td>
-        <td style="padding: 5px;">${bikeComponentsPrice || 'No match'}</td>
-        <td style="padding: 5px;">${convertedPrice}</td>
-        <td style="padding: 5px;">${bikeComponentsPrice && !bikeComponentsPrice.includes('too') ? 
-            `<a href="${addUTMParameters(bikeComponentsUrl)}" 
-                class="track-click"
-                data-store="Bike-Components"
-                data-url="${bikeComponentsUrl}"
-                data-name="${productName?.replace(/"/g, '&quot;')}"
-                data-price="${bikeComponentsPrice}"
-                target="_blank">View Product</a>` : '-'}</td>
-    </tr>`;
-}
-
-function generateCykelgearRow() {
-    const convertedPriceObj = convertPrice(cykelgearPrice || 'No match');
-    const convertedPrice = convertedPriceObj.convertedPrice || 'No match';
-
-    return `
-    <tr>
-        <td style="padding: 5px;">Cykelgear</td>
-        <td style="padding: 5px;">${cykelgearPrice || 'No match'}</td>
-        <td style="padding: 5px;">${convertedPrice}</td>
-        <td style="padding: 5px;">${cykelgearPrice && !cykelgearPrice.includes('too') ? 
-            `<a href="${addUTMParameters(cykelgearUrl)}" 
-                class="track-click"
-                data-store="Cykelgear"
-                data-url="${cykelgearUrl}"
-                data-name="${productName?.replace(/"/g, '&quot;')}"
-                data-price="${cykelgearPrice}"
-                target="_blank">View Product</a>` : '-'}</td>
-    </tr>`;
+    // Update the element's text to include the conversion inline
+    // For example: "15,75 € (117 kr)" — adjust formatting as needed.
+    priceElement.textContent = `${priceText} (${convertedPrice.toFixed(0)} kr)`;
+    console.log('[addDkkPriceDisplay] Updated price element text:', priceElement.textContent);
 }
 
 
 
-function insertPriceComparison(comparisonMessage, retryCount = 0) {
+
+
+
+function insertComparisonTable(shop, comparisonMessage, retryCount = 0) {
     const maxRetries = 5;
     const retryDelay = 1000;
-    
+
+    // Check that comparisonMessage is defined and is a string
+    if (!comparisonMessage || typeof comparisonMessage !== 'string') {
+        console.error("Comparison message is undefined or not a string. Aborting insertion.");
+        return;
+    }
+
+    // Avoid duplicate tables
     if (document.querySelector('.price-comparison-table')) {
         return;
     }
 
+    // Don't show the table if it's the "no barcode" message
+    if (comparisonMessage.includes('Vi kunne ikke finde en stegkode eller varenummer for dette produkt')) {
+        console.log('No barcode found - hiding comparison table');
+        return;
+    }
+
+    const tableElement = document.createElement('div');
+    tableElement.classList.add('price-comparison-table');
+    tableElement.innerHTML = comparisonMessage;
+    tableElement.style.marginTop = '10px';
+    tableElement.style.padding = '10px';
+    tableElement.style.border = '1px solid #ccc';
+
+    let positionElement = document.querySelector(shop.tablePosition);
+    if (positionElement) {
+        positionElement.appendChild(tableElement);
+    } else {
+        const priceElements = document.querySelectorAll(shop.priceSelector);
+        if (priceElements.length > 0) {
+            priceElements[priceElements.length - 1].insertAdjacentElement('afterend', tableElement);
+        } else if (retryCount < maxRetries) {
+            setTimeout(() => {
+                insertComparisonTable(shop, comparisonMessage, retryCount + 1);
+            }, retryDelay);
+        } else {
+            console.error(`Neither primary position nor fallback (priceSelector) found for shop ${shop.name}`);
+        }
+    }
+
+    PriceTracker.attachTrackingHandlers();
+}
+
+
+
+/* function insertPriceComparison(comparisonMessage, retryCount = 0) {
+    const maxRetries = 5;
+    const retryDelay = 1000;
+
+    if (document.querySelector('.price-comparison-table')) {
+        return;
+    }
+    // Don't show the table if it's the "no barcode" message
+    if (comparisonMessage.includes('Vi kunne ikke finde en stegkode eller varenummer for dette produkt')) {
+        console.log('No barcode found - hiding comparison table');
+        return;
+    }
     const mpnElement = document.querySelector('[itemprop="mpn"]') || 
                        document.querySelector('[itemprop="sku"]') || 
                        document.querySelector('.product-id.site-text-xs') || 
                        document.querySelector('h1');
-    
+
     if (!mpnElement && retryCount < maxRetries) {
         setTimeout(() => {
             insertPriceComparison(comparisonMessage, retryCount + 1);
         }, retryDelay);
         return;
     }
-
     const comparisonDiv = document.createElement('div');
     comparisonDiv.classList.add('price-comparison-table');
     comparisonDiv.innerHTML = comparisonMessage;
     comparisonDiv.style.marginTop = '10px';
     comparisonDiv.style.padding = '10px';
     comparisonDiv.style.border = '1px solid #ccc';
-
     if (mpnElement) {
         mpnElement.parentNode.insertBefore(comparisonDiv, mpnElement.nextSibling);
     } else {
         document.body.insertBefore(comparisonDiv, document.body.firstChild);
     }
-
     PriceTracker.attachTrackingHandlers();
-}
-}
+} */
 
-function observeMutations() {
-    // Attempt to find the product container
-    const productContainer = document.querySelector('.product-container');
 
-    if (!productContainer) {
-        retryCount++; // Increment the retry counter
-        if (retryCount > 10) {
-            console.log('Product container No match after 10 retries. Stopping.');
-            return; // Stop further retries
-        }
-
-        console.log(`Product container No match. Retrying (${retryCount}/10) in 1 second.`);
-        setTimeout(observeMutations, 1000); // Retry after 1 second
-        return;
-    }
-
-    // If product container is found, reset the retry counter
-    retryCount = 0;
-    console.log('Product container found:', productContainer);
-
-    // Disconnect the observer if it was already observing
+function setupMutationObserver() {
     if (observer) {
         observer.disconnect();
     }
 
-    // Find the GTIN meta tag
-    const gtinMeta = document.querySelector('meta[itemprop="gtin13"]');
-    const targetNode = gtinMeta ? gtinMeta.closest('td') || gtinMeta.parentElement : null;
+    const targetNode = document.querySelector('.product-details') || 
+                      document.querySelector('.main-content') || 
+                      document.body;
 
-    if (!targetNode) {
-        console.log('GTIN container No match. Retrying in 1 second.');
-        setTimeout(observeMutations, 1000); // Retry for the GTIN container
-        return;
-    }
+    if (!targetNode) return;
 
-    // Configure the observer for mutations
-    const config = { childList: true, subtree: true, attributes: true };
+    const config = {
+    childList: true,
+    subtree: false, // Narrow the scope if possible
+    attributes: true,
+    attributeFilter: ['content', 'value', 'itemprop', 'class']
+};
 
-    // Only create the observer if it's not already created
-    if (!observer) {
-        observer = new MutationObserver(mutationsList => {
-            for (const mutation of mutationsList) {
-                if (mutation.type === 'childList' || mutation.type === 'attributes') {
-                    findAndComparePrice(); // Your custom function for price comparison
-                }
+/*observer = new MutationObserver((mutations) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => {
+        // Only update if we're not already updating
+        if (!isUpdating) {
+            // Check if the mutation really affects the price element or table
+            const shouldUpdate = mutations.some(mutation => {
+                // Avoid updates triggered by our own changes in the table
+                if (mutation.target.closest('.price-comparison-table')) return false;
+                return mutation.target.matches('.price, [itemprop="price"]');
+            });
+            if (shouldUpdate) {
+                debouncedPriceUpdate();
             }
-        });
-    }
+        }
+    }, 250);
+}); */
+
 
     observer.observe(targetNode, config);
-    console.log('Observer started on target node:', targetNode);
 }
 
 
 
+
+// URL change detection
+new MutationObserver(() => {
+    const url = location.href;
+    if (url !== lastUrl) {
+        lastUrl = url;
+        console.log('URL changed, setting up new observer');
+        setupMutationObserver();
+    }
+}).observe(document.querySelector('body'), {subtree: true, childList: true});
+ // Price change detection
+observer = new MutationObserver((mutations) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => {
+        // Only update if we're not already updating
+        if (!isUpdating) {
+            // Check if the mutation really affects the price element or table
+            const shouldUpdate = mutations.some(mutation => {
+                // Avoid updates triggered by our own changes in the table
+                if (mutation.target.closest('.price-comparison-table')) return false;
+                return mutation.target.matches('.price, [itemprop="price"]');
+            });
+            if (shouldUpdate) {
+                debouncedPriceUpdate();
+            }
+        }
+    }, 250);
+}); 
+
+
+// Adds handleNavigation function
+
 function handleNavigation() {
+    console.log('🔄 Navigation detected...');
+    
+    // Update URL and reset state
     currentUrl = window.location.href;
     processedGTINs.clear();
     
-    // Get current site's price and currency
-    const { price: currentPrice, currency: currentCurrency } = getCurrentPriceAndCurrency();
-    const currentPriceEUR = currentCurrency === 'EUR' ? currentPrice : currentPrice / EUR_TO_DKK_RATE;
+	
 
-    // Only proceed with validation if we have prices to compare
-    if (typeof bikeDiscountPriceObj !== 'undefined') {
-        const bikeDiscountValid = validatePrice(bikeDiscountPriceObj, currentPrice);
-        if (!bikeDiscountValid) {
-            const bdPrice = bikeDiscountPriceObj.eurValue;
-            const message = bdPrice > (currentPriceEUR * 1.8) ? "mismatch↑" : "mismatch↓";
-            console.log(`Price on Bike-Discount is ${message} compared to current site`);
-            bikeDiscountPrice = `No match (${message})`;
-            bikeDiscountPriceObj = "No match";
-        }
+    // Setup product info object
+    setupProductInfo();
+    
+    // Get current site information
+    const { price: currentPrice, currency: currentCurrency } = getCurrentPriceAndCurrency();
+    if (!currentPrice) {
+        console.log('❌ No valid price found on current page');
+        return;
     }
 
-    if (typeof bikeComponentsPriceObj !== 'undefined') {
-        const bikeComponentsValid = validatePrice(bikeComponentsPriceObj, currentPrice);
-        if (!bikeComponentsValid) {
-            const bcPrice = bikeComponentsPriceObj.eurValue;
-            const message = bcPrice > (currentPriceEUR * 1.8) ? "mismatch↑" : "mismatch↓";
-            console.log(`Price on Bike-Components is ${message} compared to current site`);
-            bikeComponentsPrice = `No match (${message})`;
-            bikeComponentsPriceObj = "No match";
+    // Convert prices for comparison
+    const currentPriceEUR = currentCurrency === 'EUR' ? 
+        currentPrice : 
+        convertDkkToEur(currentPrice);
+    
+    console.log('💰 Current price:', {
+        original: currentPrice,
+        currency: currentCurrency,
+        eurValue: currentPriceEUR
+    });
+
+    // Validate prices from different shops
+    const shops = [
+        {
+            name: 'Bike-Discount',
+            priceObj: bikeDiscountPriceObj,
+            setPrice: (price) => { bikeDiscountPrice = price; },
+            setPriceObj: (obj) => { bikeDiscountPriceObj = obj; }
+        },
+        {
+            name: 'Bike-Components',
+            priceObj: bikeComponentsPriceObj,
+            setPrice: (price) => { bikeComponentsPrice = price; },
+            setPriceObj: (obj) => { bikeComponentsPriceObj = obj; }
         }
+    ];
+
+    shops.forEach(shop => {
+        if (typeof shop.priceObj !== 'undefined') {
+            validateShopPrice(shop, currentPrice, currentPriceEUR);
+        }
+    });
+
+    // Update the UI
+    findAndComparePrice();
+    
+    // Setup observers for future changes
+    setupMutationObserver();
+}
+
+function validateShopPrice(shop, currentPrice, currentPriceEUR) {
+    if (!shop.priceObj || isNaN(shop.priceObj.eurValue)) {
+        console.log(`❌ Invalid price for ${shop.name}, skipping validation.`);
+        return;
+    }
+
+    const isValid = validatePrice(currentPrice, shop.priceObj.eurValue, shop.priceObj.currency);
+
+    if (!isValid) {
+        console.log(`❌ Price on ${shop.name} rejected due to extreme deviation.`);
+        shop.setPrice(null); // Store `null` instead of `"No match"`
+        shop.setPriceObj(null);
+    } else {
+        console.log(`✅ Price on ${shop.name} is valid.`);
     }
 }
+
+
+function getValidationMessage(shopPrice, currentPrice) {
+    const threshold = 1.8;
+    if (shopPrice > (currentPrice * threshold)) {
+        return "mismatch↑ (too high)";
+    }
+    if (shopPrice < (currentPrice / threshold)) {
+        return "mismatch↓ (too low)";
+    }
+    return "mismatch";
+}
+
+function reattachListeners() {
+    console.log('🔄 Reattaching navigation listeners...');
+    window.addEventListener('popstate', handleNavigation);
+    window.addEventListener('pushstate', handleNavigation);
+    window.addEventListener('replacestate', handleNavigation);
+}
+
+function handleNavigation() {
+    console.log('🔄 Navigation detected:', location.href);
+    
+    setTimeout(() => {
+        console.log('🔍 Running product detection...');
+        processedGTINs.clear();
+        findAndComparePrice();
+        reattachListeners(); // Ensure listeners persist
+    }, 500);
+}
+
+function cleanupEventListeners() {
+    const oldTable = document.querySelector('.price-comparison-table');
+    if (oldTable) {
+        const links = oldTable.querySelectorAll('.track-click');
+        links.forEach(link => {
+            link.removeEventListener('click', handleClick);
+        });
+    }
+}
+
+// Ensure listeners are always active
+reattachListeners();
+
 
 // Initialize and set up all event listeners
 handleNavigation();
 
-// Listen for URL changes
+/* // Listen for URL changes
 let lastUrl = location.href;
 new MutationObserver(() => {
     const url = location.href;
@@ -1238,16 +2404,16 @@ new MutationObserver(() => {
         lastUrl = url;
         handleNavigation();
     }
-}).observe(document.querySelector('body'), {subtree: true, childList: true});
+}).observe(document.querySelector('body'), {subtree: true, childList: true}); */
 
 // Standard navigation events
 window.addEventListener('pushstate', handleNavigation);
 window.addEventListener('replacestate', handleNavigation);
 window.addEventListener('popstate', handleNavigation);
 
-// Additional events that might indicate page changes
+/* // Additional events that might indicate page changes
 window.addEventListener('load', handleNavigation);
-document.addEventListener('DOMContentLoaded', handleNavigation);
+document.addEventListener('DOMContentLoaded', handleNavigation); */
 
 // Add URL change detection through History API override
 const pushState = history.pushState;
@@ -1261,3 +2427,141 @@ history.replaceState = function() {
     replaceState.apply(history, arguments);
     handleNavigation();
 };
+
+function extractPrice(element) {
+    if (!element) return null;
+
+    // Get text content and clean it
+    let priceText = element.textContent.trim();
+    
+    // Remove any currency symbols and normalize decimal separator
+    priceText = priceText.replace(/[£$€]/g, '')  // Remove currency symbols
+                         .replace(/,/g, '.')       // Normalize decimal separator
+                         .replace(/[^\d.]/g, '')   // Remove any non-digit characters except decimal point
+                         .trim();
+
+    // Convert to number
+    const price = parseFloat(priceText);
+
+    // Validate the price
+    if (isNaN(price) || price <= 0 || price > 100000) { // Assuming no bike part costs more than 100,000
+        console.log('Invalid price found:', priceText);
+        return null;
+    }
+
+    return price;
+}
+
+function buildSearchUrl(shop, searchTerm, gtin) {
+    // Replace GTIN placeholder in URL if it exists
+    let url = shop.url.replace('{gtin}', encodeURIComponent(gtin || searchTerm));
+    
+    // For shops with a urlSuffix property
+    if (shop.urlSuffix) {
+        return `${url}${shop.urlSuffix}`;
+    }
+    // For standard shops
+    return url;
+}
+
+function formatPriceWithConversion(price, currency) {
+    if (currency === 'EUR') {
+        const convertedPrice = price * EXCHANGE_RATES.EUR_TO_DKK;
+        // You can adjust the decimal formatting as needed.
+        return `${price} € (${convertedPrice.toFixed(0)} kr)`;
+    }
+    // If the price is not in EUR, just return it as is (or add other conversions if needed)
+    return `${price} ${currency}`;
+}
+
+function processSearchResults(searchResults) {
+    let noProductsFound = true;  // Define the variable at the start of the function
+    
+    if (!searchResults || searchResults.length === 0) {
+        console.log('No search results found');
+        return;
+    }
+
+    searchResults.forEach(result => {
+        if (result.price) {
+            noProductsFound = false;  // Set to false if we find any products
+            const currentPrice = extractPrice(result.priceElement);
+            const comparisonPrice = result.price;
+
+/*             if (!validatePrice(currentPrice, comparisonPrice)) {
+                console.log('Price validation failed - skipping comparison');
+                return;
+            }
+            // Continue processing the valid result... */
+        }
+    });
+
+/*     if (noProductsFound) {
+        console.log('No valid products found after price validation');
+    } */
+}
+
+
+
+setTimeout(addDkkPriceDisplay, 3000); // Wait 2 seconds before running the conversion
+
+
+document.addEventListener('DOMContentLoaded', addDkkPriceDisplay);
+window.addEventListener('load', addDkkPriceDisplay);
+
+(function() {
+    function initializeToggleFunctionality() {
+        const hiddenRowsNodes = document.querySelectorAll('.hidden-shop');
+        const toggleButton = document.getElementById('toggleShops');
+
+        if (!toggleButton) {
+            console.log('Toggle button not found in the DOM.');
+            return;
+        }
+
+        // Check if the listener is already attached
+        if (toggleButton.getAttribute('data-listener-attached') === 'true') {
+            return;
+        }
+
+        toggleButton.addEventListener('click', function(e) {
+            e.preventDefault();
+            console.log('Toggle button clicked'); // Debugging output
+
+            // Check if any of the hidden rows are currently hidden
+            const currentlyHidden = Array.from(hiddenRowsNodes).some(row => {
+                return window.getComputedStyle(row).display === 'none';
+            });
+
+            if (currentlyHidden) {
+                hiddenRowsNodes.forEach(row => {
+                    row.style.display = 'table-row';
+                });
+                toggleButton.textContent = 'Skjul ekstra shops ▲';
+            } else {
+                hiddenRowsNodes.forEach(row => {
+                    row.style.display = 'none';
+                });
+                toggleButton.textContent = `Vis alle shops (${hiddenRowsNodes.length} mere) ▼`;
+            }
+        });
+
+        toggleButton.setAttribute('data-listener-attached', 'true');
+    }
+
+    // Initial call to set up the toggle functionality
+    initializeToggleFunctionality();
+
+    // Use a unique name attached to window to avoid redeclaration errors
+    if (!window.toggleObserver) {
+        window.toggleObserver = new MutationObserver(() => {
+            initializeToggleFunctionality();
+        });
+
+        window.toggleObserver.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+    }
+})();
+

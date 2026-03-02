@@ -1,0 +1,16 @@
+// update pop up //
+
+    chrome.runtime.onInstalled.addListener(async (details) => {
+      this.injectContentScript();
+      const manifest = chrome.runtime.getManifest();
+      if (
+        manifest.version.split('.')[1] !==
+        details.previousVersion?.split('.')[1]
+      ) {
+        const lastFocusedWindow = await chrome.windows.getLastFocused();
+        if (lastFocusedWindow.id)
+          await chrome.windows.update(lastFocusedWindow.id, {
+            focused: true,
+          });
+        chrome.action.openPopup();
+      }
