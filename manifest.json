@@ -1,11 +1,13 @@
 {
   "manifest_version": 2,
-  "name": "PedalPricer",
-  "version": "1.6.7",
-  "description": "Compare bike part prices across multiple stores.",
+  "name": "PriceComparison",
+  "version": "2.0.0",
+  "description": "Live price comparison tool for bike parts",
   "permissions": [
     "activeTab",
     "storage",
+    "https://*.amazon.com/*",
+    "https://*.ebay.com/*",
     "https://*.cykelgear.dk/*",
     "https://*.bike-discount.de/*",
     "https://*.bikable.no/*",
@@ -15,24 +17,42 @@
     "https://jrgrafisk.dk/*",
     "https://*.allbike.dk/*",
     "https://*.cykelpartner.dk/*",
-	"https://*.r2-bike.com/*",
-	"https://*.cykelexperten.dk/*",
-	"https://*.fribikeshop.dk/*",
-	"https://*.alltricks.com/*",
+    "https://*.r2-bike.com/*",
+    "https://*.cykelexperten.dk/*",
+    "https://*.fribikeshop.dk/*",
+    "https://*.alltricks.com/*",
     "https://*.cykelshoppen.dk/*"
   ],
   "background": {
-    "scripts": [
-      "config.js",
-      "background.js"
-    ]
+    "scripts": ["config.js", "background.js"],
+    "persistent": false
   },
   "content_scripts": [
     {
-      "matches": ["*://*/*"],
+      "matches": [
+        "*://*.amazon.com/*",
+        "*://*.ebay.com/*",
+        "*://*.cykelgear.dk/*",
+        "*://*.bike-discount.de/*",
+        "*://*.bikable.no/*",
+        "*://*.bikable.com/*",
+        "*://*.bikable.se/*",
+        "*://*.bike-components.de/*",
+        "*://jrgrafisk.dk/*",
+        "*://*.allbike.dk/*",
+        "*://*.cykelpartner.dk/*",
+        "*://*.r2-bike.com/*",
+        "*://*.cykelexperten.dk/*",
+        "*://*.fribikeshop.dk/*",
+        "*://*.alltricks.com/*",
+        "*://*.cykelshoppen.dk/*"
+      ],
       "js": ["config.js", "content.js"]
     }
   ],
+  "browser_action": {
+    "default_popup": "popup.html"
+  },
   "icons": {
     "16": "icons/16x16pp.png",
     "48": "icons/48x48pp.png",
@@ -43,10 +63,5 @@
       "id": "firefoxextension@jrgrafisk.dk",
       "strict_min_version": "134.0"
     }
-  },
-  "browser_action": {
-    "default_popup": "popup.html"
   }
-  }
-
-
+}
