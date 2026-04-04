@@ -74,7 +74,8 @@ const SHOPS = [
         ],
         domain: "cykelpartner.dk",
         tablePosition: ".uk-margin",
-        defaultCurrency: "DKK"
+        defaultCurrency: "DKK",
+        timeout: 2000
     },
     {
         name: "Cykelexperten",

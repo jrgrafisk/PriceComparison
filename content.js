@@ -161,7 +161,7 @@ const convertEurToDkk = (priceInEur) => priceInEur * EUR_TO_DKK_RATE;
 const convertDkkToEur = (priceInDkk) => priceInDkk / EUR_TO_DKK_RATE;
 
 
-function insertLoadingPlaceholder(shop, activeShops) {
+function insertLoadingPlaceholder(shop, activeShops, onSkip) {
     if (document.querySelector('.price-comparison-table')) return;
 
     const rows = (activeShops || []).map(s => `
@@ -175,12 +175,17 @@ function insertLoadingPlaceholder(shop, activeShops) {
     el.classList.add('price-comparison-table', 'price-comparison-loading');
     el.innerHTML = `
         <div style="padding:10px;font-family:Arial,sans-serif;border:1px solid #f2994b;">
-            <div style="font-size:12px;font-weight:700;color:#f2994b;margin-bottom:6px;">Henter priser...</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                <span style="font-size:12px;font-weight:700;color:#f2994b;">Henter priser...</span>
+                <button id="pp-skip-btn" style="font-size:11px;color:#999;background:none;border:none;cursor:pointer;padding:0;text-decoration:underline;">Spring over</button>
+            </div>
             <div id="pp-shop-status">${rows}</div>
         </div>
         <style>@keyframes pp-spin{to{transform:rotate(360deg)}}</style>
     `;
     el.style.cssText = 'margin-top:10px;';
+    el.querySelector('#pp-skip-btn').addEventListener('click', () => onSkip?.());
+
     const anchor = document.querySelector(shop.tablePosition);
     if (anchor) {
         anchor.appendChild(el);
@@ -1300,37 +1305,57 @@ function findPrice() {
 
 
 
-async function searchWithIdentifier(identifier, identifierType, onShopResult) {
+async function searchWithIdentifier(identifier, identifierType, onShopResult, skipSignal) {
     console.log(`🔍 Starter søgning efter ${identifier} (${identifierType})`);
 
-    // Clean the identifier
     const cleanIdentifier = identifier.replace(/^Item number:\s*/i, '').trim();
-
-    // Only search enabled shops
     const activeShops = SHOPS.filter(shop => !enabledShops.hasOwnProperty(shop.domain) || enabledShops[shop.domain]);
 
-    // Make all requests in parallel
-    const responses = await Promise.all(
-        activeShops.map(async shop => {
-            try {
-                console.log(`🔎 Søger på ${shop.name} med selector: ${shop.priceSelector}...`);
-                const url = shop.domain === 'r2-bike.com'
-                    ? buildSearchUrl(shop, cleanIdentifier, cleanIdentifier)  // Use GTIN for R2 Bike
-                    : shop.url + encodeURIComponent(cleanIdentifier);  // Use regular search for other shops
-                const response = await browser.runtime.sendMessage({
-                    action: 'findPrice',
-                    identifier: cleanIdentifier,
-                    url: url
-                });
-                const result = response || { html: null, url: shop.url + encodeURIComponent(cleanIdentifier) };
-                onShopResult?.(shop.domain, !!result.html);
-                return result;
-            } catch (error) {
-                console.error(`❌ Fejl ved søgning på ${shop.name}:`, error);
-                onShopResult?.(shop.domain, false);
-                return { html: null, url: shop.url + encodeURIComponent(cleanIdentifier) };
-            }
-        })
+    // Collect results as each shop resolves (so skip can use partial results)
+    const partialResults = new Array(activeShops.length).fill(null);
+
+    const shopPromises = activeShops.map(async (shop, i) => {
+        try {
+            console.log(`🔎 Søger på ${shop.name}...`);
+            const url = shop.domain === 'r2-bike.com'
+                ? buildSearchUrl(shop, cleanIdentifier, cleanIdentifier)
+                : shop.url + encodeURIComponent(cleanIdentifier);
+
+            const fetchPromise = browser.runtime.sendMessage({
+                action: 'findPrice',
+                identifier: cleanIdentifier,
+                url: url
+            }).then(r => r || { html: null, url });
+
+            // Per-shop timeout (e.g. Cykelpartner)
+            const result = shop.timeout
+                ? await Promise.race([
+                    fetchPromise,
+                    new Promise(resolve =>
+                        setTimeout(() => resolve({ html: null, url, timedOut: true }), shop.timeout)
+                    )
+                  ])
+                : await fetchPromise;
+
+            partialResults[i] = result;
+            onShopResult?.(shop.domain, result.timedOut ? 'timeout' : !!result.html);
+            return result;
+        } catch (error) {
+            console.error(`❌ Fejl ved søgning på ${shop.name}:`, error);
+            onShopResult?.(shop.domain, false);
+            return { html: null, url: shop.url + encodeURIComponent(cleanIdentifier) };
+        }
+    });
+
+    // Race all shops against optional skip signal
+    await Promise.race([
+        Promise.all(shopPromises),
+        ...(skipSignal ? [skipSignal] : [])
+    ]);
+
+    // Fill nulls for shops that hadn't responded yet (skipped by user)
+    const responses = activeShops.map((shop, i) =>
+        partialResults[i] || { html: null, url: shop.url + encodeURIComponent(cleanIdentifier) }
     );
 
     return {
@@ -1378,25 +1403,44 @@ async function findAndComparePrice() {
         // Beregn aktive shops (samme filter som searchWithIdentifier bruger)
         const activeShops = SHOPS.filter(s => !enabledShops.hasOwnProperty(s.domain) || enabledShops[s.domain]);
 
-        // Fjern gammel tabel og vis loader med per-shop rækker
+        // Skip-signal: resolves når brugeren trykker "Spring over"
+        let skipResolve;
+        const skipSignal = new Promise(resolve => { skipResolve = resolve; });
+
+        // Fjern gammel tabel og vis loader med per-shop rækker + skip-knap
         document.querySelectorAll('.price-comparison-table').forEach(el => el.remove());
-        insertLoadingPlaceholder(shop, activeShops);
+        insertLoadingPlaceholder(shop, activeShops, skipResolve);
 
         // Callback: opdater den pågældende shop-række når dens promise resolver
-        const onShopResult = (domain, found) => {
+        const onShopResult = (domain, status) => {
             const row = document.querySelector(`[data-domain="${domain}"]`);
             if (!row) return;
             const spinner = row.querySelector('.shop-spinner');
             if (spinner) spinner.remove();
             const icon = document.createElement('span');
             icon.style.cssText = 'width:10px;height:10px;font-size:11px;line-height:10px;display:inline-block;flex-shrink:0;';
-            icon.textContent = found ? '✓' : '✗';
-            icon.style.color = found ? '#4caf50' : '#bbb';
+            if (status === 'timeout') {
+                icon.textContent = '⏱';
+                icon.style.color = '#bbb';
+            } else {
+                icon.textContent = status ? '✓' : '✗';
+                icon.style.color = status ? '#4caf50' : '#bbb';
+            }
             row.prepend(icon);
         };
 
-        // Hent priser fra alle shops
-        const { responses } = await searchWithIdentifier(gtin, 'GTIN', onShopResult);
+        // Hent priser fra alle shops (med skip-mulighed)
+        const { responses } = await searchWithIdentifier(gtin, 'GTIN', onShopResult, skipSignal);
+
+        // Markér eventuelle shops der stadig ventede (brugeren trykkede spring over)
+        document.querySelectorAll('#pp-shop-status [data-domain] .shop-spinner').forEach(spinner => {
+            const row = spinner.closest('[data-domain]');
+            spinner.remove();
+            const icon = document.createElement('span');
+            icon.style.cssText = 'width:10px;height:10px;font-size:11px;line-height:10px;display:inline-block;flex-shrink:0;color:#bbb;';
+            icon.textContent = '–';
+            row.prepend(icon);
+        });
 
         // Erstat loader med resultat
         document.querySelectorAll('.price-comparison-table').forEach(el => el.remove());
