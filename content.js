@@ -4,7 +4,7 @@
 // console.log = function() {}; // Override console.log with a no-op function
 
 // To re-enable logging later, you can restore the original function
- console.log = originalConsoleLog; // Uncomment this line to restore logging
+// console.log = originalConsoleLog; // Uncomment this line to restore logging
 
 console.log('Content script loaded');
 console.log('Current URL:', window.location.href);
