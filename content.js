@@ -149,43 +149,6 @@ let gtinSearchAttempts = 0;
 const MAX_GTIN_SEARCH_ATTEMPTS = 2;
 let cachedGTIN = null;  // Add this at the top with other global variables
 
-function normalizePrice(priceText) {
-    if (!priceText) return null;
-
-    try {
-        // Clean up the price text
-        let price = priceText.trim();
-        
-        // Remove "from" or "fra" prefix (case insensitive)
-        price = price.replace(/^(from|fra)\s+/i, '');
-        
-        // Remove currency symbols and extra spaces
-        price = price.replace(/[€$£kr]/g, '').trim();
-        
-        // Handle European number format (e.g., "27,95")
-        if (price.includes(',') && /,\d{2}(?:\s|$)/.test(price)) {
-            price = price.replace(/\./g, '').replace(',', '.');
-        } else {
-            // Remove thousand separators
-            price = price.replace(/,/g, '');
-        }
-        
-        // Convert to number
-        const numericPrice = parseFloat(price);
-        
-        if (isNaN(numericPrice)) {
-            console.log('❌ Failed to parse price:', priceText);
-            return null;
-        }
-        
-        console.log('✅ Parsed price:', { original: priceText, normalized: numericPrice });
-        return numericPrice;
-    } catch (error) {
-        console.error('Error normalizing price:', error);
-        return null;
-    }
-}
-
 // Get current site information
 let { price: currentPrice, currency: currentCurrency } = getCurrentPriceAndCurrency();
 console.log('Current price:', currentPrice, 'Currency:', currentCurrency);
@@ -944,24 +907,6 @@ waitForGTIN(gtin => console.log("GTIN found dynamically:", gtin));
 
 
 
-// Function to find and store Price
-function findPrice() {
-    if (priceFound) return productData.price;  // If already found, return it
-
-    const priceSelector = '.price .amount';  // Fallback selector
-    const priceElement = document.querySelector(priceSelector);
-    if (priceElement) {
-        const priceValue = priceElement.textContent.trim().replace('€', '').trim();
-        productData.price = priceValue;
-        priceFound = true;  // Mark as found
-        console.log('Price found:', priceValue);
-        return priceValue;
-    }
-
-    console.log('Price No match');
-    return null;
-}
-
 // Function to find and store MPN
 function findMPN() {
     const mpnSelectors = [
@@ -1332,26 +1277,6 @@ function findProductName() {
 } */
 
 
-// Main extraction function
-function extractProductData() {
-    const gtin = findGTIN();
-    
-    // Only check MPN if GTIN was No match
-    let mpn = null;
-    if (!gtin) {
-        mpn = findMPN(); // Check MPN if no GTIN
-    }
-
-    // Log the results
-    if (gtin) {
-        console.log('Using GTIN:', gtin);
-    } else if (mpn) {
-        console.log('Using MPN:', mpn);
-    } else {
-        console.log('No GTIN or MPN found, cannot proceed.');
-    }
-}
-
 function validateGTIN(gtin) {
     if (!gtin) return false;
     const cleanGTIN = gtin.toString().replace(/[^0-9]/g, '');
@@ -1359,9 +1284,6 @@ function validateGTIN(gtin) {
 }
 
 
-
-// Call the main extraction function when the page is loaded
-extractProductData();
 
 function findProductData() {
     const scripts = document.querySelectorAll('script[type="application/ld+json"]');
@@ -1533,8 +1455,8 @@ async function findAndComparePrice() {
             const errorMessage = `
                 <h4 style="display: inline; font-weight: 700;">Prissammenligning</h4>
                 <p>Vi kunne ikke finde en stegkode eller varenummer for dette produkt.</p>
-                ${productName ? 
-                    `<p><a href="https://www.ecosia.org/search?method=index&q=${encodeURIComponent(gtin)}" target="_blank" title="Søg efter ${productName} på Ecosia">Prøv en web-søgning 🔍</a></p>` : 
+                ${productName ?
+                    `<p><a href="https://www.ecosia.org/search?method=index&q=${encodeURIComponent(productName)}" target="_blank" title="Søg efter ${productName} på Ecosia">Prøv en web-søgning 🔍</a></p>` :
                     ''}
             `;
             const shop = SHOPS.find(s => window.location.href.includes(s.domain));
@@ -2204,37 +2126,33 @@ function setupMutationObserver() {
         observer.disconnect();
     }
 
-    const targetNode = document.querySelector('.product-details') || 
-                      document.querySelector('.main-content') || 
+    const targetNode = document.querySelector('.product-details') ||
+                      document.querySelector('.main-content') ||
                       document.body;
 
     if (!targetNode) return;
 
     const config = {
-    childList: true,
-    subtree: false, // Narrow the scope if possible
-    attributes: true,
-    attributeFilter: ['content', 'value', 'itemprop', 'class']
-};
+        childList: true,
+        subtree: false,
+        attributes: true,
+        attributeFilter: ['content', 'value', 'itemprop', 'class']
+    };
 
-/*observer = new MutationObserver((mutations) => {
-    clearTimeout(timeout);
-    timeout = setTimeout(() => {
-        // Only update if we're not already updating
-        if (!isUpdating) {
-            // Check if the mutation really affects the price element or table
-            const shouldUpdate = mutations.some(mutation => {
-                // Avoid updates triggered by our own changes in the table
-                if (mutation.target.closest('.price-comparison-table')) return false;
-                return mutation.target.matches('.price, [itemprop="price"]');
-            });
-            if (shouldUpdate) {
-                debouncedPriceUpdate();
+    observer = new MutationObserver((mutations) => {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => {
+            if (!isUpdating) {
+                const shouldUpdate = mutations.some(mutation => {
+                    if (mutation.target.closest && mutation.target.closest('.price-comparison-table')) return false;
+                    return mutation.target.matches && mutation.target.matches('.price, [itemprop="price"]');
+                });
+                if (shouldUpdate) {
+                    debouncedPriceUpdate();
+                }
             }
-        }
-    }, 250);
-}); */
-
+        }, 250);
+    });
 
     observer.observe(targetNode, config);
 }
@@ -2251,115 +2169,6 @@ new MutationObserver(() => {
         setupMutationObserver();
     }
 }).observe(document.querySelector('body'), {subtree: true, childList: true});
- // Price change detection
-observer = new MutationObserver((mutations) => {
-    clearTimeout(timeout);
-    timeout = setTimeout(() => {
-        // Only update if we're not already updating
-        if (!isUpdating) {
-            // Check if the mutation really affects the price element or table
-            const shouldUpdate = mutations.some(mutation => {
-                // Avoid updates triggered by our own changes in the table
-                if (mutation.target.closest('.price-comparison-table')) return false;
-                return mutation.target.matches('.price, [itemprop="price"]');
-            });
-            if (shouldUpdate) {
-                debouncedPriceUpdate();
-            }
-        }
-    }, 250);
-}); 
-
-
-// Adds handleNavigation function
-
-function handleNavigation() {
-    console.log('🔄 Navigation detected...');
-    
-    // Update URL and reset state
-    currentUrl = window.location.href;
-    processedGTINs.clear();
-    
-	
-
-    // Setup product info object
-    setupProductInfo();
-    
-    // Get current site information
-    const { price: currentPrice, currency: currentCurrency } = getCurrentPriceAndCurrency();
-    if (!currentPrice) {
-        console.log('❌ No valid price found on current page');
-        return;
-    }
-
-    // Convert prices for comparison
-    const currentPriceEUR = currentCurrency === 'EUR' ? 
-        currentPrice : 
-        convertDkkToEur(currentPrice);
-    
-    console.log('💰 Current price:', {
-        original: currentPrice,
-        currency: currentCurrency,
-        eurValue: currentPriceEUR
-    });
-
-    // Validate prices from different shops
-    const shops = [
-        {
-            name: 'Bike-Discount',
-            priceObj: bikeDiscountPriceObj,
-            setPrice: (price) => { bikeDiscountPrice = price; },
-            setPriceObj: (obj) => { bikeDiscountPriceObj = obj; }
-        },
-        {
-            name: 'Bike-Components',
-            priceObj: bikeComponentsPriceObj,
-            setPrice: (price) => { bikeComponentsPrice = price; },
-            setPriceObj: (obj) => { bikeComponentsPriceObj = obj; }
-        }
-    ];
-
-    shops.forEach(shop => {
-        if (typeof shop.priceObj !== 'undefined') {
-            validateShopPrice(shop, currentPrice, currentPriceEUR);
-        }
-    });
-
-    // Update the UI
-    findAndComparePrice();
-    
-    // Setup observers for future changes
-    setupMutationObserver();
-}
-
-function validateShopPrice(shop, currentPrice, currentPriceEUR) {
-    if (!shop.priceObj || isNaN(shop.priceObj.eurValue)) {
-        console.log(`❌ Invalid price for ${shop.name}, skipping validation.`);
-        return;
-    }
-
-    const isValid = validatePrice(currentPrice, shop.priceObj.eurValue, shop.priceObj.currency);
-
-    if (!isValid) {
-        console.log(`❌ Price on ${shop.name} rejected due to extreme deviation.`);
-        shop.setPrice(null); // Store `null` instead of `"No match"`
-        shop.setPriceObj(null);
-    } else {
-        console.log(`✅ Price on ${shop.name} is valid.`);
-    }
-}
-
-
-function getValidationMessage(shopPrice, currentPrice) {
-    const threshold = 1.8;
-    if (shopPrice > (currentPrice * threshold)) {
-        return "mismatch↑ (too high)";
-    }
-    if (shopPrice < (currentPrice / threshold)) {
-        return "mismatch↓ (too low)";
-    }
-    return "mismatch";
-}
 
 function reattachListeners() {
     console.log('🔄 Reattaching navigation listeners...');

@@ -68,7 +68,6 @@ const SHOPS = [
         url: "https://www.cykelpartner.dk/produktsogning?q=",
         priceSelector: ".price-separated, .price, .uk-h2.uk-text-bold.uk-text-primary",
         gtinSelectors: [
-            'tr td:contains("EAN") + td',
             '[itemprop="gtin13"]',
             '[itemprop="gtin"]',
             'meta[property="product:ean"]'
@@ -83,10 +82,8 @@ const SHOPS = [
         urlSuffix: "*)",
         priceSelector: ".hr-search-overlay-product-price-box .price, .product-price, .product-detail-price-container",
         gtinSelectors: [
-            "[itemprop='gtin13']", 
-            "[itemprop='gtin']",
-            "span:contains('EAN')",
-            ".product-specification tr:contains('EAN') td:last-child"
+            "[itemprop='gtin13']",
+            "[itemprop='gtin']"
         ],
         domain: "cykelexperten.dk",
 	    tablePosition: ".product-detail-price-container",
@@ -98,9 +95,8 @@ const SHOPS = [
         priceSelector: ".product__top--price pp-margin, .salesprice, .product-detail-price-container",
         gtinSelectors: [
             ".specifications__spec-value",
-			"[itemprop='gtin13']", 
-            "[itemprop='gtin']",
-            "span:contains('EAN')"
+            "[itemprop='gtin13']",
+            "[itemprop='gtin']"
         ],
         domain: "fribikeshop.dk",
 	    tablePosition: ".product__top--content-size",
@@ -109,11 +105,10 @@ const SHOPS = [
 	{
 	        name: "AllTricks (beta)",
         url: "https://www.alltricks.com/Buy/",
-        priceSelector: ".price , .alltricks-Product-wrapPrice, .alltricks-Product-wrapPrice",
+        priceSelector: ".price, .alltricks-Product-wrapPrice",
         gtinSelectors: [
-			"[itemprop='gtin13']", 
-            "[itemprop='gtin']",
-            "span:contains('EAN')"
+            "[itemprop='gtin13']",
+            "[itemprop='gtin']"
         ],
         domain: "alltricks.com",
 	    tablePosition: ".product-header-stock-delay",
@@ -161,15 +156,6 @@ const PRODUCT_INFO_TEMPLATE = {
     detectedOn: '',
     foundTimestamp: ''
 };
-
-document.querySelectorAll('.track-click').forEach(link => {
-    link.addEventListener('click', event => {
-        console.log('Link clicked:', event.currentTarget.href);
-        // Ensure the default behavior is not prevented
-        // event.preventDefault(); // Remove or comment out if present
-    });
-});
-
 
 /* Export for Node.js or attach to window for browser context */
 if (typeof module !== 'undefined' && module.exports) {
