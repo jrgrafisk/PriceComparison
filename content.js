@@ -161,14 +161,22 @@ const convertEurToDkk = (priceInEur) => priceInEur * EUR_TO_DKK_RATE;
 const convertDkkToEur = (priceInDkk) => priceInDkk / EUR_TO_DKK_RATE;
 
 
-function insertLoadingPlaceholder(shop) {
+function insertLoadingPlaceholder(shop, activeShops) {
     if (document.querySelector('.price-comparison-table')) return;
+
+    const rows = (activeShops || []).map(s => `
+        <div data-domain="${s.domain}" style="display:flex;align-items:center;gap:6px;padding:2px 0;font-size:12px;color:#555;">
+            <span class="shop-spinner" style="display:inline-block;width:10px;height:10px;border:2px solid #f2994b;border-top-color:transparent;border-radius:50%;animation:pp-spin 0.7s linear infinite;flex-shrink:0;"></span>
+            <span>${s.name}</span>
+        </div>
+    `).join('');
+
     const el = document.createElement('div');
     el.classList.add('price-comparison-table', 'price-comparison-loading');
     el.innerHTML = `
-        <div style="padding:10px;font-family:Arial,sans-serif;border:1px solid #f2994b;display:flex;align-items:center;gap:8px;">
-            <span style="display:inline-block;width:14px;height:14px;border:2px solid #f2994b;border-top-color:transparent;border-radius:50%;animation:pp-spin 0.7s linear infinite;flex-shrink:0;"></span>
-            <span style="font-size:13px;color:#555;">Henter priser...</span>
+        <div style="padding:10px;font-family:Arial,sans-serif;border:1px solid #f2994b;">
+            <div style="font-size:12px;font-weight:700;color:#f2994b;margin-bottom:6px;">Henter priser...</div>
+            <div id="pp-shop-status">${rows}</div>
         </div>
         <style>@keyframes pp-spin{to{transform:rotate(360deg)}}</style>
     `;
@@ -1292,7 +1300,7 @@ function findPrice() {
 
 
 
-async function searchWithIdentifier(identifier, identifierType) {
+async function searchWithIdentifier(identifier, identifierType, onShopResult) {
     console.log(`🔍 Starter søgning efter ${identifier} (${identifierType})`);
 
     // Clean the identifier
@@ -1306,7 +1314,7 @@ async function searchWithIdentifier(identifier, identifierType) {
         activeShops.map(async shop => {
             try {
                 console.log(`🔎 Søger på ${shop.name} med selector: ${shop.priceSelector}...`);
-                const url = shop.domain === 'r2-bike.com' 
+                const url = shop.domain === 'r2-bike.com'
                     ? buildSearchUrl(shop, cleanIdentifier, cleanIdentifier)  // Use GTIN for R2 Bike
                     : shop.url + encodeURIComponent(cleanIdentifier);  // Use regular search for other shops
                 const response = await browser.runtime.sendMessage({
@@ -1314,9 +1322,12 @@ async function searchWithIdentifier(identifier, identifierType) {
                     identifier: cleanIdentifier,
                     url: url
                 });
-                return response || { html: null, url: shop.url + encodeURIComponent(cleanIdentifier) };
+                const result = response || { html: null, url: shop.url + encodeURIComponent(cleanIdentifier) };
+                onShopResult?.(shop.domain, !!result.html);
+                return result;
             } catch (error) {
                 console.error(`❌ Fejl ved søgning på ${shop.name}:`, error);
+                onShopResult?.(shop.domain, false);
                 return { html: null, url: shop.url + encodeURIComponent(cleanIdentifier) };
             }
         })
@@ -1364,12 +1375,28 @@ async function findAndComparePrice() {
         if (processedGTINs.has(gtin)) return;
         processedGTINs.set(gtin, true);
 
-        // Fjern gammel tabel og vis loader
+        // Beregn aktive shops (samme filter som searchWithIdentifier bruger)
+        const activeShops = SHOPS.filter(s => !enabledShops.hasOwnProperty(s.domain) || enabledShops[s.domain]);
+
+        // Fjern gammel tabel og vis loader med per-shop rækker
         document.querySelectorAll('.price-comparison-table').forEach(el => el.remove());
-        insertLoadingPlaceholder(shop);
+        insertLoadingPlaceholder(shop, activeShops);
+
+        // Callback: opdater den pågældende shop-række når dens promise resolver
+        const onShopResult = (domain, found) => {
+            const row = document.querySelector(`[data-domain="${domain}"]`);
+            if (!row) return;
+            const spinner = row.querySelector('.shop-spinner');
+            if (spinner) spinner.remove();
+            const icon = document.createElement('span');
+            icon.style.cssText = 'width:10px;height:10px;font-size:11px;line-height:10px;display:inline-block;flex-shrink:0;';
+            icon.textContent = found ? '✓' : '✗';
+            icon.style.color = found ? '#4caf50' : '#bbb';
+            row.prepend(icon);
+        };
 
         // Hent priser fra alle shops
-        const { responses } = await searchWithIdentifier(gtin, 'GTIN');
+        const { responses } = await searchWithIdentifier(gtin, 'GTIN', onShopResult);
 
         // Erstat loader med resultat
         document.querySelectorAll('.price-comparison-table').forEach(el => el.remove());
