@@ -301,26 +301,6 @@ function debouncedPriceUpdate() {
 }
   
 
-function detectUrlChange() {
-    let lastUrl = location.href;
-
-    const observer = new MutationObserver(() => {
-        if (location.href !== lastUrl) {
-            console.log('🔄 URL changed (Detected by MutationObserver):', location.href);
-            lastUrl = location.href;
-            gtinSearchAttempts = 0;
-            cachedGTIN = null;  // Reset cached GTIN
-            handleNavigation();
-            console.log("🔄 Checking for GTIN again...");
-            findGTINsOnPage();
-            addDkkPriceDisplay();
-        }
-    });
-
-    observer.observe(document.body, { childList: true, subtree: true });
-}
-
-detectUrlChange();
 
 function getCurrentPriceAndCurrency() {
     const currentShop = SHOPS.find(shop => window.location.hostname.includes(shop.domain));
@@ -863,46 +843,6 @@ function extractGTINFromJSON(json) {
     return null;
 }
 
-function waitForGTIN(callback, maxRetries = 10, interval = 500) {
-    let attempts = 0;
-    let observer = null;
-    
-    console.log("🔍 Starting GTIN search...");
-
-    const checkGTIN = () => {
-        let gtin = findGTIN();
-        if (gtin) {
-            console.log(`✅ GTIN found after ${attempts + 1} attempts: ${gtin}`);
-            if (observer) observer.disconnect(); // Stop observing if GTIN is found
-            callback(gtin);
-        } else if (attempts < maxRetries) {
-            attempts++;
-            console.log(`🔄 GTIN not found. Retrying... (${attempts}/${maxRetries})`);
-            setTimeout(checkGTIN, interval);
-        } else {
-            console.log("❌ GTIN not found after max retries. Watching for DOM changes...");
-            
-            // Ensure we only attach one observer at a time
-            if (!observer) {
-                observer = new MutationObserver(() => {
-                    let dynamicGTIN = findGTIN();
-                    if (dynamicGTIN) {
-                        console.log(`✅ GTIN dynamically found: ${dynamicGTIN}`);
-                        observer.disconnect();
-                        callback(dynamicGTIN);
-                    }
-                });
-
-                observer.observe(document.body, { childList: true, subtree: true });
-            }
-        }
-    };
-
-    checkGTIN();
-}
-
-// 🔥 Start GTIN detection with automatic retries & DOM watching
-waitForGTIN(gtin => console.log("GTIN found dynamically:", gtin));
 
 
 
@@ -1351,30 +1291,6 @@ function findPrice() {
 }
 
 
-// Main Function to Run on Page Load
-function extractProductData() {
-    const gtin = findGTIN();
-    const price = findPrice();
-
-    // Check if GTIN is missing or price is invalid
-    if (!gtin) {
-        console.log('GTIN No match, cannot proceed.');
-        return;
-    }
-
-    if (isNaN(price)) {
-        console.log('Invalid price format, cannot proceed.');
-        return;
-    }
-
-    // Use the GTIN and price for further processing
-    console.log('GTIN:', gtin);
-    console.log('Price:', price)
-}
-
-
-// Call the main function when the page is loaded or ready
-extractProductData();
 
 async function searchWithIdentifier(identifier, identifierType) {
     console.log(`🔍 Starter søgning efter ${identifier} (${identifierType})`);
@@ -1504,177 +1420,6 @@ async function findAndComparePrice() {
 
 
 
-// New simplified function to scan JSON-LD for GTINs and display with Ecosia links
-function scanAndDisplayGTINs() {
-    console.log('🔍 Scanning JSON-LD for GTINs...');
-    
-    // Remove any existing GTIN display
-    const existingDisplay = document.querySelector('.gtin-display-container');
-    if (existingDisplay) {
-        existingDisplay.remove();
-    }
-    
-    const foundGTINs = new Set(); // Use Set to avoid duplicates
-    
-    // Scan all JSON-LD scripts
-    const scripts = document.querySelectorAll('script[type="application/ld+json"]');
-    
-    for (let i = 0; i < scripts.length; i++) {
-        try {
-            const parsedData = JSON.parse(scripts[i].textContent);
-            const dataArray = Array.isArray(parsedData) ? parsedData : [parsedData];
-            
-            // Recursive function to extract GTINs from any object
-            function extractGTINs(obj, path = '') {
-                if (!obj || typeof obj !== 'object') return;
-                
-                // Check for GTIN properties
-                const gtinFields = ['gtin', 'gtin13', 'gtin8', 'gtin12', 'gtin14'];
-                for (const field of gtinFields) {
-                    if (obj[field]) {
-                        const gtin = String(obj[field]).trim();
-                        // Validate GTIN (typically 8-14 digits)
-                        if (/^\d{8,14}$/.test(gtin)) {
-                            foundGTINs.add(gtin);
-                            console.log(`✅ Found GTIN: ${gtin} (from ${path || 'root'})`);
-                        }
-                    }
-                }
-                
-                // Recursively check nested objects and arrays
-                for (const key in obj) {
-                    if (obj.hasOwnProperty(key)) {
-                        const value = obj[key];
-                        if (Array.isArray(value)) {
-                            value.forEach((item, index) => {
-                                extractGTINs(item, `${path}.${key}[${index}]`);
-                            });
-                        } else if (value && typeof value === 'object') {
-                            extractGTINs(value, path ? `${path}.${key}` : key);
-                        }
-                    }
-                }
-            }
-            
-            dataArray.forEach((data, index) => {
-                extractGTINs(data, `script[${i}].item[${index}]`);
-            });
-            
-        } catch (e) {
-            console.error(`❌ Error parsing JSON-LD script #${i + 1}:`, e);
-        }
-    }
-    
-    // If no GTINs found, don't display anything
-    if (foundGTINs.size === 0) {
-        console.log('ℹ️ No GTINs found in JSON-LD data');
-        return;
-    }
-    
-    // Create display container
-    const container = document.createElement('div');
-    container.className = 'gtin-display-container';
-    container.style.cssText = `
-        margin: 20px 0;
-        padding: 15px;
-        border: 2px solid #f2994b;
-        border-radius: 8px;
-        background-color: #fff;
-        font-family: Arial, sans-serif;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    `;
-    
-    // Create header
-    const header = document.createElement('h3');
-    header.textContent = 'Found GTINs';
-    header.style.cssText = 'margin: 0 0 10px 0; font-size: 18px; color: #333;';
-    container.appendChild(header);
-    
-    // Create list of GTINs with Ecosia search links
-    const list = document.createElement('ul');
-    list.style.cssText = 'list-style: none; padding: 0; margin: 0;';
-    
-    Array.from(foundGTINs).sort().forEach(gtin => {
-        const listItem = document.createElement('li');
-        listItem.style.cssText = 'margin: 8px 0; padding: 8px; background-color: #f9f9f9; border-radius: 4px;';
-        
-        const gtinText = document.createElement('span');
-        gtinText.textContent = `GTIN: ${gtin}`;
-        gtinText.style.cssText = 'font-weight: bold; margin-right: 10px;';
-        
-        const searchLink = document.createElement('a');
-        searchLink.href = `https://www.ecosia.org/search?method=index&q=${encodeURIComponent(gtin)}`;
-        searchLink.target = '_blank';
-        searchLink.rel = 'noopener noreferrer';
-        searchLink.textContent = '🔍 Search for this product on Ecosia';
-        searchLink.style.cssText = 'color: #f2994b; text-decoration: none;';
-        searchLink.addEventListener('mouseenter', () => {
-            searchLink.style.textDecoration = 'underline';
-        });
-        searchLink.addEventListener('mouseleave', () => {
-            searchLink.style.textDecoration = 'none';
-        });
-        
-        listItem.appendChild(gtinText);
-        listItem.appendChild(searchLink);
-        list.appendChild(listItem);
-    });
-    
-    container.appendChild(list);
-    
-    // Try to insert near product information, otherwise append to body
-    const productSelectors = [
-        '[itemprop="productID"]',
-        '[itemprop="gtin13"]',
-        '[itemprop="gtin"]',
-        'h1',
-        '.product-title',
-        '.product-name',
-        '[data-product-id]'
-    ];
-    
-    let inserted = false;
-    for (const selector of productSelectors) {
-        const element = document.querySelector(selector);
-        if (element) {
-            element.insertAdjacentElement('afterend', container);
-            inserted = true;
-            break;
-        }
-    }
-    
-    if (!inserted) {
-        // Fallback: insert at the beginning of body
-        document.body.insertBefore(container, document.body.firstChild);
-    }
-    
-    console.log(`✅ Displayed ${foundGTINs.size} GTIN(s)`);
-}
-
-// Call the simplified GTIN scanner when the page is loaded or ready
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', scanAndDisplayGTINs);
-} else {
-    scanAndDisplayGTINs();
-}
-
-// Also scan when page content changes (for SPAs)
-const gtinObserver = new MutationObserver(() => {
-    // Debounce to avoid too many scans
-    clearTimeout(window.gtinScanTimeout);
-    window.gtinScanTimeout = setTimeout(scanAndDisplayGTINs, 500);
-});
-
-gtinObserver.observe(document.body, {
-    childList: true,
-    subtree: true
-});
-
-// Original price comparison function (kept for reference, but not called by default)
-// findAndComparePrice();
-
-
-
 function generateNoProductsMessage(productName) {
     return `
         <div class="no-products-message">
@@ -1774,15 +1519,6 @@ function setupProductInfo() {
 }
 
 initializeEnabledShops();
-
-browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.action === 'shopsUpdated') {
-        console.log('Received shop updates:', message.enabledShops);
-        enabledShops = message.enabledShops;
-        // Refresh the price comparison
-        findAndComparePrice();
-    }
-});
 
 function generateComparisonTable(priceResults, identifierType, gtin = null) {
     console.log("🔍 Running generateComparisonTable()...");
@@ -2079,6 +1815,7 @@ function insertComparisonTable(shop, comparisonMessage, retryCount = 0) {
     }
 
     PriceTracker.attachTrackingHandlers();
+    initializeToggleFunctionality();
 }
 
 
@@ -2160,49 +1897,26 @@ function setupMutationObserver() {
 
 
 
-// URL change detection
+// URL change detection (for SPAs)
 new MutationObserver(() => {
     const url = location.href;
     if (url !== lastUrl) {
         lastUrl = url;
-        console.log('URL changed, setting up new observer');
+        handleNavigation();
         setupMutationObserver();
     }
 }).observe(document.querySelector('body'), {subtree: true, childList: true});
 
-function reattachListeners() {
-    console.log('🔄 Reattaching navigation listeners...');
-    window.addEventListener('popstate', handleNavigation);
-    window.addEventListener('pushstate', handleNavigation);
-    window.addEventListener('replacestate', handleNavigation);
-}
-
 function handleNavigation() {
     console.log('🔄 Navigation detected:', location.href);
-    
-    setTimeout(() => {
-        console.log('🔍 Running product detection...');
-        processedGTINs.clear();
-        findAndComparePrice();
-        reattachListeners(); // Ensure listeners persist
-    }, 500);
+    gtinSearchAttempts = 0;
+    cachedGTIN = null;
+    processedGTINs.clear();
+    findAndComparePrice();
+    addDkkPriceDisplay();
 }
 
-function cleanupEventListeners() {
-    const oldTable = document.querySelector('.price-comparison-table');
-    if (oldTable) {
-        const links = oldTable.querySelectorAll('.track-click');
-        links.forEach(link => {
-            link.removeEventListener('click', handleClick);
-        });
-    }
-}
-
-// Ensure listeners are always active
-reattachListeners();
-
-
-// Initialize and set up all event listeners
+// Initial run
 handleNavigation();
 
 /* // Listen for URL changes
@@ -2312,65 +2026,29 @@ function processSearchResults(searchResults) {
 
 
 
-setTimeout(addDkkPriceDisplay, 3000); // Wait 2 seconds before running the conversion
 
+function initializeToggleFunctionality() {
+    const hiddenRowsNodes = document.querySelectorAll('.hidden-shop');
+    const toggleButton = document.getElementById('toggleShops');
 
-document.addEventListener('DOMContentLoaded', addDkkPriceDisplay);
-window.addEventListener('load', addDkkPriceDisplay);
+    if (!toggleButton) return;
+    if (toggleButton.getAttribute('data-listener-attached') === 'true') return;
 
-(function() {
-    function initializeToggleFunctionality() {
-        const hiddenRowsNodes = document.querySelectorAll('.hidden-shop');
-        const toggleButton = document.getElementById('toggleShops');
+    toggleButton.addEventListener('click', function(e) {
+        e.preventDefault();
+        const currentlyHidden = Array.from(hiddenRowsNodes).some(row => {
+            return window.getComputedStyle(row).display === 'none';
+        });
 
-        if (!toggleButton) {
-            console.log('Toggle button not found in the DOM.');
-            return;
+        if (currentlyHidden) {
+            hiddenRowsNodes.forEach(row => { row.style.display = 'table-row'; });
+            toggleButton.textContent = 'Skjul ekstra shops ▲';
+        } else {
+            hiddenRowsNodes.forEach(row => { row.style.display = 'none'; });
+            toggleButton.textContent = `Vis alle shops (${hiddenRowsNodes.length} mere) ▼`;
         }
+    });
 
-        // Check if the listener is already attached
-        if (toggleButton.getAttribute('data-listener-attached') === 'true') {
-            return;
-        }
-
-        toggleButton.addEventListener('click', function(e) {
-            e.preventDefault();
-            console.log('Toggle button clicked'); // Debugging output
-
-            // Check if any of the hidden rows are currently hidden
-            const currentlyHidden = Array.from(hiddenRowsNodes).some(row => {
-                return window.getComputedStyle(row).display === 'none';
-            });
-
-            if (currentlyHidden) {
-                hiddenRowsNodes.forEach(row => {
-                    row.style.display = 'table-row';
-                });
-                toggleButton.textContent = 'Skjul ekstra shops ▲';
-            } else {
-                hiddenRowsNodes.forEach(row => {
-                    row.style.display = 'none';
-                });
-                toggleButton.textContent = `Vis alle shops (${hiddenRowsNodes.length} mere) ▼`;
-            }
-        });
-
-        toggleButton.setAttribute('data-listener-attached', 'true');
-    }
-
-    // Initial call to set up the toggle functionality
-    initializeToggleFunctionality();
-
-    // Use a unique name attached to window to avoid redeclaration errors
-    if (!window.toggleObserver) {
-        window.toggleObserver = new MutationObserver(() => {
-            initializeToggleFunctionality();
-        });
-
-        window.toggleObserver.observe(document.body, {
-            childList: true,
-            subtree: true
-        });
-    }
-})();
+    toggleButton.setAttribute('data-listener-attached', 'true');
+}
 
