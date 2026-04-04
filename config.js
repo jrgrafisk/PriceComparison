@@ -38,7 +38,16 @@ const SHOPS = [
         gtinSelectors: ["[itemprop=\"gtin13\"]"],
         domain: "cykelgear.dk",
         tablePosition: ".flex.gap-4.flex-wrap.mt-6",
-        defaultCurrency: "DKK"
+        defaultCurrency: "DKK",
+        inertia: {
+            productPaths: [
+                "props.products.data",
+                "props.hits",
+                "props.results.data",
+                "props.items.data"
+            ],
+            priceField: "price"
+        }
     },
     {
         name: "Cykelshoppen",

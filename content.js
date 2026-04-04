@@ -245,6 +245,32 @@ function normalizePriceToEUR(price, currency) {
     }
 }
 
+function extractInertiaPrice(html, shop) {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const appEl = doc.querySelector('[data-page]');
+    if (!appEl) return null;
+
+    let pageData;
+    try {
+        pageData = JSON.parse(appEl.getAttribute('data-page'));
+    } catch (e) {
+        console.error('Inertia: kunne ikke parse data-page JSON', e);
+        return null;
+    }
+
+    const { productPaths, priceField } = shop.inertia;
+    for (const path of productPaths) {
+        const products = path.split('.').reduce((obj, key) => obj?.[key], pageData);
+        if (Array.isArray(products) && products.length > 0) {
+            const price = products[0][priceField];
+            if (price != null) return String(price);
+        }
+    }
+
+    console.log('Inertia: ingen pris fundet. data-page props:', JSON.stringify(pageData?.props, null, 2));
+    return null;
+}
+
 function displayPrice(responses, identifier, identifierType) {
     const currentPriceInfo = getCurrentPriceAndCurrency();
     if (!currentPriceInfo.price) {
@@ -259,11 +285,16 @@ function displayPrice(responses, identifier, identifierType) {
             const shop = SHOPS.find(s => response.url.includes(s.domain));
             if (!shop || (enabledShops[shop.domain] === false)) return null;
 
-            const doc = new DOMParser().parseFromString(response.html, 'text/html');
-            const priceElement = doc.querySelector(shop.priceSelector);
-            if (!priceElement) return null;
-
-            const priceText = priceElement.textContent.trim();
+            let priceText;
+            if (shop.inertia) {
+                priceText = extractInertiaPrice(response.html, shop);
+                if (!priceText) return null;
+            } else {
+                const doc = new DOMParser().parseFromString(response.html, 'text/html');
+                const priceElement = doc.querySelector(shop.priceSelector);
+                if (!priceElement) return null;
+                priceText = priceElement.textContent.trim();
+            }
             const { price, currency } = extractPriceAndCurrency(priceText);
             if (!price) return null;
 
