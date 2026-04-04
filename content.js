@@ -161,24 +161,24 @@ const convertEurToDkk = (priceInEur) => priceInEur * EUR_TO_DKK_RATE;
 const convertDkkToEur = (priceInDkk) => priceInDkk / EUR_TO_DKK_RATE;
 
 
-function showLoadingState() {
-    const existingTable = document.querySelector('.price-comparison-table');
-    if (existingTable) {
-        existingTable.style.opacity = '0.5';
-        const loading = document.createElement('div');
-        loading.className = 'price-loading';
-        loading.innerHTML = 'Henter priser...';
-        loading.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);';
-        existingTable.appendChild(loading);
-    }
-}
-
-function hideLoadingState() {
-    const existingTable = document.querySelector('.price-comparison-table');
-    if (existingTable) {
-        existingTable.style.opacity = '1';
-        const loading = existingTable.querySelector('.price-loading');
-        if (loading) loading.remove();
+function insertLoadingPlaceholder(shop) {
+    if (document.querySelector('.price-comparison-table')) return;
+    const el = document.createElement('div');
+    el.classList.add('price-comparison-table', 'price-comparison-loading');
+    el.innerHTML = `
+        <div style="padding:10px;font-family:Arial,sans-serif;border:1px solid #f2994b;display:flex;align-items:center;gap:8px;">
+            <span style="display:inline-block;width:14px;height:14px;border:2px solid #f2994b;border-top-color:transparent;border-radius:50%;animation:pp-spin 0.7s linear infinite;flex-shrink:0;"></span>
+            <span style="font-size:13px;color:#555;">Henter priser...</span>
+        </div>
+        <style>@keyframes pp-spin{to{transform:rotate(360deg)}}</style>
+    `;
+    el.style.cssText = 'margin-top:10px;';
+    const anchor = document.querySelector(shop.tablePosition);
+    if (anchor) {
+        anchor.appendChild(el);
+    } else {
+        const priceEl = document.querySelector(shop.priceSelector);
+        if (priceEl) priceEl.insertAdjacentElement('afterend', el);
     }
 }
 
@@ -1339,81 +1339,48 @@ async function searchWithIdentifier(identifier, identifierType) {
 
 // Hovedfunktion til at finde og sammenligne pris
 async function findAndComparePrice() {
+    const allowedShops = SHOPS.map(shop => shop.domain);
+    const isAllowed = allowedShops.some(domain => window.location.href.includes(domain));
+    if (!isAllowed) return;
+
+    const shop = SHOPS.find(s => window.location.href.includes(s.domain));
+    if (!shop) return;
+
     try {
-        showLoadingState();
-        console.log('🔍 Starter prissammenligning...');
-
-        // Clear previous price data before fetching new ones
-        let priceResults = [];
-
-        const allowedShops = SHOPS.map(shop => shop.domain);
-        const isAllowed = allowedShops.some(domain => window.location.href.includes(domain));
-
-        if (!isAllowed) {
-            console.log('❌ Forkert side, stopper.');
-            return;
-        }
-
-        // Find produktnavn
         const productName = findProductName();
-        console.log('📌 Produktnavn fundet:', productName);
+        const gtin = findGTIN();
 
-        // Find GTIN og MPN
-        let gtin = findGTIN();
-        let searchIdentifier = gtin;
-        let identifierType = gtin ? "GTIN" : "MPN";
-
-        console.log(`🔍 Bruger ${identifierType}:`, searchIdentifier);
-
-        // Hvis ingen GTIN eller MPN findes, vis Google-søgning
-        if (!searchIdentifier) {
-            console.log('❌ Ingen GTIN eller MPN fundet.');
-            const errorMessage = `
-                <h4 style="display: inline; font-weight: 700;">Prissammenligning</h4>
-                <p>Vi kunne ikke finde en stegkode eller varenummer for dette produkt.</p>
-                ${productName ?
-                    `<p><a href="https://www.ecosia.org/search?method=index&q=${encodeURIComponent(productName)}" target="_blank" title="Søg efter ${productName} på Ecosia">Prøv en web-søgning 🔍</a></p>` :
-                    ''}
+        if (!gtin) {
+            // Ingen GTIN fundet – vis besked direkte, ingen loader
+            const noGtinMessage = `
+                <h4 style="display:inline;font-weight:700;">Prissammenligning</h4>
+                <p>Kan ikke finde match for dette produkt.</p>
+                ${productName ? `<p><a href="https://www.ecosia.org/search?method=index&q=${encodeURIComponent(productName)}" target="_blank">Prøv en web-søgning 🔍</a></p>` : ''}
             `;
-            const shop = SHOPS.find(s => window.location.href.includes(s.domain));
-            if (shop) {
-                insertComparisonTable(shop, errorMessage);
-            } else {
-                console.error('No matching shop found for the current URL');
-            }
+            insertComparisonTable(shop, noGtinMessage);
             return;
         }
 
-        // 🔍 Undgå at søge efter samme GTIN flere gange
-        if (processedGTINs.has(searchIdentifier)) {
-            console.log(`⚠️ ${identifierType} ${searchIdentifier} er allerede behandlet. Skipping.`);
-            return;
-        }
+        if (processedGTINs.has(gtin)) return;
+        processedGTINs.set(gtin, true);
 
-        processedGTINs.set(searchIdentifier, true); // Markér som behandlet
-
-        // 🔄 **Clear previous prices before fetching new ones**
+        // Fjern gammel tabel og vis loader
         document.querySelectorAll('.price-comparison-table').forEach(el => el.remove());
+        insertLoadingPlaceholder(shop);
 
-        // 🔍 Fetch new prices
-        const { responses: primaryResponses, foundPrice: primaryFound } = await searchWithIdentifier(searchIdentifier, identifierType);
+        // Hent priser fra alle shops
+        const { responses } = await searchWithIdentifier(gtin, 'GTIN');
 
-        // Hvis vi fandt en pris, vis den på siden
-        displayPrice(primaryResponses, searchIdentifier, identifierType);
+        // Erstat loader med resultat
+        document.querySelectorAll('.price-comparison-table').forEach(el => el.remove());
+        displayPrice(responses, gtin, 'GTIN');
     } catch (error) {
         console.error('Error in price comparison:', error);
-        const errorMessage = `
-            <h4 style="display: inline; font-weight: 700;">Prissammenligning</h4>
-            <p>Der opstod en fejl under hentning af priser. Prøv igen senere.</p>
-        `;
-        const shop = SHOPS.find(s => window.location.href.includes(s.domain));
-        if (shop) {
-            insertComparisonTable(shop, errorMessage);
-        } else {
-            console.error('No matching shop found for the current URL');
-        }
-    } finally {
-        hideLoadingState();
+        document.querySelectorAll('.price-comparison-table').forEach(el => el.remove());
+        insertComparisonTable(shop, `
+            <h4 style="display:inline;font-weight:700;">Prissammenligning</h4>
+            <p>Der opstod en fejl. Prøv igen senere.</p>
+        `);
     }
 }
 
