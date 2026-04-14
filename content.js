@@ -163,31 +163,22 @@ const convertDkkToEur = (priceInDkk) => priceInDkk / EUR_TO_DKK_RATE;
 function insertLoadingPlaceholder(shop, activeShops, onSkip) {
     if (document.querySelector('.price-comparison-table')) return;
 
-    const el = document.createElement('div');
-    el.classList.add('price-comparison-table', 'price-comparison-loading');
-    el.style.cssText = 'margin-top:10px;';
+    const style = document.createElement('style');
+    style.textContent = '@keyframes pp-spin{to{transform:rotate(360deg)}}';
+    document.head.appendChild(style);
 
-    // Outer wrapper
-    const wrapper = document.createElement('div');
-    wrapper.style.cssText = 'padding:10px;font-family:Arial,sans-serif;border:1px solid #f2994b;';
+    const widget = document.createElement('div');
+    widget.classList.add('price-comparison-table');
+    widget.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:2147483647;font-family:Arial,sans-serif;';
 
-    // Header row
-    const header = document.createElement('div');
-    header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;';
-    const title = document.createElement('span');
-    title.style.cssText = 'font-size:12px;font-weight:700;color:#f2994b;';
-    title.textContent = 'Henter priser...';
-    const skipBtn = document.createElement('button');
-    skipBtn.id = 'pp-skip-btn';
-    skipBtn.style.cssText = 'font-size:11px;color:#999;background:none;border:none;cursor:pointer;padding:0;text-decoration:underline;';
-    skipBtn.textContent = 'Spring over';
-    skipBtn.addEventListener('click', () => onSkip?.());
-    header.appendChild(title);
-    header.appendChild(skipBtn);
+    const panel = document.createElement('div');
+    panel.id = 'pp-shop-status';
+    panel.style.cssText = 'background:white;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,.15);padding:10px 14px;margin-bottom:8px;min-width:180px;';
+    const panelTitle = document.createElement('div');
+    panelTitle.style.cssText = 'font-size:11px;font-weight:700;color:#f2994b;margin-bottom:6px;';
+    panelTitle.textContent = 'Henter priser...';
+    panel.appendChild(panelTitle);
 
-    // Shop status rows
-    const statusContainer = document.createElement('div');
-    statusContainer.id = 'pp-shop-status';
     (activeShops || []).forEach(s => {
         const row = document.createElement('div');
         row.dataset.domain = s.domain;
@@ -199,25 +190,26 @@ function insertLoadingPlaceholder(shop, activeShops, onSkip) {
         nameSpan.textContent = s.name;
         row.appendChild(spinner);
         row.appendChild(nameSpan);
-        statusContainer.appendChild(row);
+        panel.appendChild(row);
     });
 
-    // Spin keyframes
-    const style = document.createElement('style');
-    style.textContent = '@keyframes pp-spin{to{transform:rotate(360deg)}}';
+    const btn = document.createElement('div');
+    btn.style.cssText = 'background:#f2994b;color:white;border-radius:28px;padding:10px 18px;box-shadow:0 4px 16px rgba(0,0,0,.2);font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;white-space:nowrap;';
+    const sp = document.createElement('span');
+    sp.style.cssText = 'display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,.5);border-top-color:white;border-radius:50%;animation:pp-spin 0.7s linear infinite;flex-shrink:0;';
+    const lbl = document.createElement('span');
+    lbl.textContent = 'Søger priser...';
+    const skipBtn = document.createElement('span');
+    skipBtn.textContent = '✕';
+    skipBtn.style.cssText = 'margin-left:4px;opacity:.7;cursor:pointer;font-size:14px;padding:2px;';
+    skipBtn.addEventListener('click', (e) => { e.stopPropagation(); onSkip?.(); });
+    btn.appendChild(sp);
+    btn.appendChild(lbl);
+    btn.appendChild(skipBtn);
 
-    wrapper.appendChild(header);
-    wrapper.appendChild(statusContainer);
-    el.appendChild(wrapper);
-    el.appendChild(style);
-
-    const anchor = document.querySelector(shop.tablePosition);
-    if (anchor) {
-        anchor.appendChild(el);
-    } else {
-        const priceEl = document.querySelector(shop.priceSelector);
-        if (priceEl) priceEl.insertAdjacentElement('afterend', el);
-    }
+    widget.appendChild(panel);
+    widget.appendChild(btn);
+    document.body.appendChild(widget);
 }
 
 
@@ -395,10 +387,17 @@ function displayPrice(responses, identifier, identifierType) {
         generateNoProductsMessage(productName) :
         generateComparisonTable(priceResults, identifierType, productName); // Debugging log
 
+    // Compute summary for trigger button label
+    const sortedForSummary = [...priceResults].sort((a, b) => Number(a.eurPrice) - Number(b.eurPrice));
+    const best = sortedForSummary[0];
+    const summary = priceResults.length > 0
+        ? `${priceResults.length} ${priceResults.length === 1 ? 'pris' : 'priser'} · Bedste: ${Math.round(Number(best.dkkPrice))} kr. (${best.shop})`
+        : 'Ingen priser fundet';
+
     // Ensure the shop object is passed correctly
     const shop = SHOPS.find(s => window.location.href.includes(s.domain));
     if (shop) {
-        insertComparisonTable(shop, comparisonMessage);
+        insertComparisonTable(shop, comparisonMessage, 0, summary);
     } else {
 
     }
@@ -1725,41 +1724,33 @@ function generateComparisonTable(priceResults, identifierType, gtin = null) {
     // Build the full table HTML with drop shadow added
     const tableHtml = `
         <style>
-            .price-comparison-table {
+            .pp-table {
                 font-family: Arial, sans-serif;
                 border-collapse: collapse;
                 width: 100%;
-                border: 1px solid #f2994b;
-                text-align: left !important;
-                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                text-align: left;
             }
-            .price-comparison-table th, .price-comparison-table td {
-                border: 1px solid #c0c0c0;
-                padding: 1rem;
-                text-align: left !important;
+            .pp-table th, .pp-table td {
+                border: 1px solid #e8e8e8;
+                padding: 8px 10px;
+                text-align: left;
+                font-size: 13px;
             }
-            .price-comparison-table th {
-                background-color: #f0f0f0;
+            .pp-table th {
+                background-color: #f8f8f8;
+                font-size: 11px;
+                color: #555;
+                font-weight: 600;
             }
-            .price-comparison-table .shop-row {
-                cursor: pointer;
-            }
-            .price-comparison-table .shop-row:hover {
-                background-color: #f1f1f1;
-            }
-            .price-comparison-table .hidden-shop {
-                display: none;
-            }
+            .pp-table .shop-row { cursor: pointer; }
+            .pp-table .shop-row:hover { background-color: #fafafa; }
+            .pp-table .hidden-shop { display: none; }
+            .pp-table a { color: #f2994b; text-decoration: none; }
+            .pp-table a:hover { text-decoration: underline; }
         </style>
-        <h4 style="display: inline; font-weight: 700;">Prissammenligning</h4>
-        <p style="display: inline;">
-            ${productName ?
-                `<a href="https://www.ecosia.org/search?method=index&q=${encodeURIComponent(productName)}" target="_blank" title="Søg efter ${productName} på Ecosia">🔍</a>` :
-                '-'
-            }
-        </p>
-        
-        <table class="price-comparison-table">
+        ${productName ? `<p style="margin:0 0 8px;font-size:11px;color:#999;"><a href="https://www.ecosia.org/search?method=index&q=${encodeURIComponent(productName)}" target="_blank" style="color:#f2994b;">🔍 Søg "${productName}" på nettet</a></p>` : ''}
+
+        <table class="pp-table">
             <tr>
                 <th style="padding: 5px; font-size: 10px;">Forhandler</th>
                 <th style="padding: 5px; font-size: 10px;">Pris i EUR</th>
@@ -1786,16 +1777,21 @@ function generateComparisonTable(priceResults, identifierType, gtin = null) {
 
 
 function updateTableSafely(newHTML) {
-    // Disconnect observer to prevent it from reacting to our changes
     if (observer) {
         observer.disconnect();
     }
-    const tableContainer = document.querySelector('.price-comparison-table');
-    if (tableContainer) {
+    const contentArea = document.querySelector('.pp-panel-content');
+    if (contentArea) {
         const parsed = new DOMParser().parseFromString(newHTML, 'text/html');
-        tableContainer.replaceChildren(...Array.from(parsed.body.childNodes));
+        contentArea.replaceChildren(...Array.from(parsed.body.childNodes));
     } else {
-        insertComparisonTable(newHTML);
+        const tableContainer = document.querySelector('.price-comparison-table');
+        if (tableContainer) {
+            const parsed = new DOMParser().parseFromString(newHTML, 'text/html');
+            tableContainer.replaceChildren(...Array.from(parsed.body.childNodes));
+        } else {
+            insertComparisonTable(null, newHTML);
+        }
     }
 /*     // Reattach the observer after a short delay to ensure the update is complete
     setTimeout(() => {
@@ -1896,49 +1892,61 @@ function addDkkPriceDisplay() {
 
 
 
-function insertComparisonTable(shop, comparisonMessage, retryCount = 0) {
-    const maxRetries = 5;
-    const retryDelay = 1000;
+function insertComparisonTable(shop, comparisonMessage, retryCount = 0, summary = null) {
+    if (!comparisonMessage || typeof comparisonMessage !== 'string') return;
+    if (document.querySelector('.price-comparison-table')) return;
+    if (comparisonMessage.includes('Vi kunne ikke finde en stegkode eller varenummer for dette produkt')) return;
 
-    // Check that comparisonMessage is defined and is a string
-    if (!comparisonMessage || typeof comparisonMessage !== 'string') {
+    const widget = document.createElement('div');
+    widget.classList.add('price-comparison-table');
+    widget.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:2147483647;font-family:Arial,sans-serif;';
 
-        return;
-    }
+    // Popup panel
+    const panel = document.createElement('div');
+    panel.className = 'pp-panel';
+    panel.style.cssText = 'background:white;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.18);width:400px;max-width:calc(100vw - 48px);overflow:hidden;margin-bottom:8px;';
 
-    // Avoid duplicate tables
-    if (document.querySelector('.price-comparison-table')) {
-        return;
-    }
+    // Panel header
+    const hdr = document.createElement('div');
+    hdr.style.cssText = 'background:#f2994b;color:white;padding:12px 16px;font-weight:700;font-size:14px;display:flex;justify-content:space-between;align-items:center;';
+    const hdrTitle = document.createElement('span');
+    hdrTitle.textContent = 'Prissammenligning';
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = '✕';
+    closeBtn.style.cssText = 'background:none;border:none;color:white;cursor:pointer;font-size:16px;padding:0;line-height:1;opacity:.85;';
+    closeBtn.addEventListener('click', (e) => { e.stopPropagation(); panel.style.display = 'none'; });
+    hdr.appendChild(hdrTitle);
+    hdr.appendChild(closeBtn);
 
-    // Don't show the table if it's the "no barcode" message
-    if (comparisonMessage.includes('Vi kunne ikke finde en stegkode eller varenummer for dette produkt')) {
-
-        return;
-    }
-
-    const tableElement = document.createElement('div');
-    tableElement.classList.add('price-comparison-table');
+    // Panel body
+    const body = document.createElement('div');
+    body.className = 'pp-panel-content';
+    body.style.cssText = 'overflow-y:auto;max-height:60vh;padding:12px 16px;';
     const parsed = new DOMParser().parseFromString(comparisonMessage, 'text/html');
-    Array.from(parsed.body.childNodes).forEach(node => tableElement.appendChild(node));
-    tableElement.style.marginTop = '10px';
-    tableElement.style.padding = '10px';
-    tableElement.style.border = '1px solid #ccc';
+    Array.from(parsed.body.childNodes).forEach(node => body.appendChild(node));
 
-    let positionElement = document.querySelector(shop.tablePosition);
-    if (positionElement) {
-        positionElement.appendChild(tableElement);
-    } else {
-        const priceElements = document.querySelectorAll(shop.priceSelector);
-        if (priceElements.length > 0) {
-            priceElements[priceElements.length - 1].insertAdjacentElement('afterend', tableElement);
-        } else if (retryCount < maxRetries) {
-            setTimeout(() => {
-                insertComparisonTable(shop, comparisonMessage, retryCount + 1);
-            }, retryDelay);
-        } else {
-        }
-    }
+    panel.appendChild(hdr);
+    panel.appendChild(body);
+
+    // Trigger button
+    const btn = document.createElement('div');
+    btn.style.cssText = 'background:#f2994b;color:white;border-radius:28px;padding:10px 18px;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.2);font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;user-select:none;white-space:nowrap;';
+    const btnIcon = document.createElement('span');
+    btnIcon.textContent = '🔍';
+    const btnLabel = document.createElement('span');
+    btnLabel.textContent = summary || 'Vis prissammenligning';
+    btn.appendChild(btnIcon);
+    btn.appendChild(btnLabel);
+    btn.addEventListener('click', () => {
+        panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    });
+
+    widget.appendChild(panel);
+    widget.appendChild(btn);
+    document.body.appendChild(widget);
+
+    // Auto-open panel to show results immediately
+    panel.style.display = 'block';
 
     PriceTracker.attachTrackingHandlers();
     initializeToggleFunctionality();
