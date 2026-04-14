@@ -26,11 +26,11 @@ const SHOPS = [
     },
     {
         name: "Bike Discount",
-        url: "https://www.bike-discount.de/en/search?sSearch=",
-        priceSelector: "meta[itemprop='price'], #netz-price, .product--price",
+        url: "https://www.bike-discount.de/en/search?search=",
+        priceSelector: "meta[itemprop='price'], .product-price-wrapper meta[itemprop='price'], #netz-price",
         gtinSelectors: [".netz-ean", "[data-ean]", ".pd-ean"],
         domain: "bike-discount.de",
-        tablePosition: ".product--tax",
+        tablePosition: ".product-detail-tax",
         defaultCurrency: "EUR"
     },
     {
@@ -161,17 +161,17 @@ const SHOPS = [
         defaultCurrency: "DKK"
     },
     {
-	    name: "R2 Bike",
-	    url: "https://r2-bike.com/search/?qs={gtin}&lang=eng",
-	    priceSelector: "meta[itemprop='price'], .ndGAfVKBrutto, .price.no-letter-spacing.productbox-price.mas-price-color, [itemprop='content']",
-	    gtinSelectors: [
-	        '[itemprop="gtin13"]',
-	        '[itemprop="gtin"]'
-	    ],
-	    domain: "r2-bike.com",
-	    tablePosition: ".vat_info",
-	    defaultCurrency: "EUR"
-	}
+        name: "R2 Bike",
+        url: "https://r2-bike.com/search/?qs={gtin}&lang=eng",
+        priceSelector: "meta[name='ndGAfVKBrutto'], meta[itemprop='price'], .price.no-letter-spacing.productbox-price.mas-price-color",
+        gtinSelectors: [
+            '[itemprop="gtin13"]',
+            '[itemprop="gtin"]'
+        ],
+        domain: "r2-bike.com",
+        tablePosition: ".vat_info",
+        defaultCurrency: "EUR"
+    }
 ];
 
 // Product info template
