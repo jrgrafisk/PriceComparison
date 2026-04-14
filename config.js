@@ -121,19 +121,6 @@ const SHOPS = [
 	    tablePosition: ".product-detail-price-container",
 	    defaultCurrency: "DKK"
     },
-	    {
-        name: "Fri Bike Shop (beta)",
-        url: "https://www.fribikeshop.dk/soeg?q=",
-        priceSelector: ".product__top--price pp-margin, .salesprice, .product-detail-price-container",
-        gtinSelectors: [
-            ".specifications__spec-value",
-            "[itemprop='gtin13']",
-            "[itemprop='gtin']"
-        ],
-        domain: "fribikeshop.dk",
-	    tablePosition: ".product__top--content-size",
-	    defaultCurrency: "DKK"
-    },
 	{
 	        name: "AllTricks",
         url: "https://www.alltricks.com/Buy/",
