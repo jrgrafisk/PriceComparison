@@ -7,6 +7,12 @@ const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Support + privacy page — also reachable at /support+privacy (add-on store link format)
+const supportPage = path.join(__dirname, 'public', 'support.html');
+app.get('/support', (req, res) => res.sendFile(supportPage));
+app.get('/support+privacy', (req, res) => res.sendFile(supportPage));
+app.get('/privacy', (req, res) => res.sendFile(supportPage));
+
 app.post('/api/compare', async (req, res) => {
     try {
         const { input } = req.body;
