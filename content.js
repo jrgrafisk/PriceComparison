@@ -1758,7 +1758,7 @@ function generateComparisonTable(priceResults, identifierType, gtin = null) {
             .pp-table a { color: #f2994b; text-decoration: none; }
             .pp-table a:hover { text-decoration: underline; }
         </style>
-        ${productName ? `<p style="margin:0 0 8px;font-size:11px;color:#999;"><a href="https://www.ecosia.org/search?method=index&q=${encodeURIComponent(productName)}" target="_blank" style="color:#f2994b;">🔍 Søg "${productName}" på nettet</a></p>` : ''}
+        ${cachedGTIN ? `<p style="margin:0 0 8px;font-size:11px;color:#999;"><a href="https://www.ecosia.org/search?method=index&q=${encodeURIComponent(cachedGTIN)}" target="_blank" style="color:#f2994b;">🔍 Søg EAN ${cachedGTIN} på nettet</a></p>` : ''}
 
         <table class="pp-table">
             <tr>
