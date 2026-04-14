@@ -388,17 +388,27 @@ function displayPrice(responses, identifier, identifierType) {
         generateNoProductsMessage(productName) :
         generateComparisonTable(priceResults, identifierType, productName); // Debugging log
 
-    // Compute summary for trigger button label
-    const sortedForSummary = [...priceResults].sort((a, b) => Number(a.eurPrice) - Number(b.eurPrice));
+    // Compute summary, savings and cheaper count
+    const sortedForSummary = [...priceResults].sort((a, b) => Number(a.dkkPrice) - Number(b.dkkPrice));
     const best = sortedForSummary[0];
+
+    const currentDkk = currentPriceInfo.currency === 'DKK'
+        ? currentPriceInfo.price
+        : currentPriceInfo.price * EXCHANGE_RATES.EUR_TO_DKK;
+    const savings = (best && currentDkk) ? Math.round(currentDkk - Number(best.dkkPrice)) : 0;
+    const cheaperCount = priceResults.filter(r => Number(r.dkkPrice) < currentDkk - 1).length;
+
     const summary = priceResults.length > 0
         ? `${priceResults.length} ${priceResults.length === 1 ? 'pris' : 'priser'} · Bedste: ${Math.round(Number(best.dkkPrice))} kr. (${best.shop})`
         : 'Ingen priser fundet';
 
+    // Update extension badge with cheaper alternatives count
+    try { browser.runtime.sendMessage({ action: 'setBadge', count: cheaperCount }); } catch(e) {}
+
     // Ensure the shop object is passed correctly
     const shop = SHOPS.find(s => window.location.href.includes(s.domain));
     if (shop) {
-        insertComparisonTable(shop, comparisonMessage, 0, summary);
+        insertComparisonTable(shop, comparisonMessage, 0, summary, savings);
     } else {
 
     }
@@ -1890,14 +1900,17 @@ function addDkkPriceDisplay() {
 
 
 
-function insertComparisonTable(shop, comparisonMessage, retryCount = 0, summary = null) {
+function insertComparisonTable(shop, comparisonMessage, retryCount = 0, summary = null, savings = 0) {
     if (!comparisonMessage || typeof comparisonMessage !== 'string') return;
     if (document.querySelector('.price-comparison-table')) return;
     if (comparisonMessage.includes('Vi kunne ikke finde en stegkode eller varenummer for dette produkt')) return;
 
     const widget = document.createElement('div');
     widget.classList.add('price-comparison-table');
-    widget.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:2147483647;font-family:Arial,sans-serif;';
+
+    // Restore saved position, default bottom-right
+    const savedPos = JSON.parse(sessionStorage.getItem('pp-pos') || 'null');
+    widget.style.cssText = `position:fixed;bottom:${savedPos?.bottom ?? 24}px;right:${savedPos?.right ?? 24}px;z-index:2147483647;font-family:Arial,sans-serif;`;
 
     // Popup panel
     const panel = document.createElement('div');
@@ -1912,9 +1925,22 @@ function insertComparisonTable(shop, comparisonMessage, retryCount = 0, summary 
     const closeBtn = document.createElement('button');
     closeBtn.textContent = '✕';
     closeBtn.style.cssText = 'background:none;border:none;color:white;cursor:pointer;font-size:16px;padding:0;line-height:1;opacity:.85;';
-    closeBtn.addEventListener('click', (e) => { e.stopPropagation(); panel.style.display = 'none'; });
+    closeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        panel.style.display = 'none';
+        sessionStorage.setItem('pp-open', 'false');
+    });
     hdr.appendChild(hdrTitle);
     hdr.appendChild(closeBtn);
+    panel.appendChild(hdr);
+
+    // Savings bar
+    if (savings > 0) {
+        const savingsBar = document.createElement('div');
+        savingsBar.style.cssText = 'background:#e8f5e9;color:#2e7d32;padding:8px 16px;font-size:12px;font-weight:600;text-align:center;border-bottom:1px solid #c8e6c9;';
+        savingsBar.textContent = `💰 Du kan spare op til ${savings} kr. på dette produkt`;
+        panel.appendChild(savingsBar);
+    }
 
     // Panel body
     const body = document.createElement('div');
@@ -1922,29 +1948,64 @@ function insertComparisonTable(shop, comparisonMessage, retryCount = 0, summary 
     body.style.cssText = 'overflow-y:auto;max-height:60vh;padding:12px 16px;';
     const parsed = new DOMParser().parseFromString(comparisonMessage, 'text/html');
     Array.from(parsed.body.childNodes).forEach(node => body.appendChild(node));
-
-    panel.appendChild(hdr);
     panel.appendChild(body);
 
     // Trigger button
     const btn = document.createElement('div');
-    btn.style.cssText = 'background:#f2994b;color:white;border-radius:28px;padding:10px 18px;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.2);font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;user-select:none;white-space:nowrap;';
+    btn.style.cssText = 'background:#f2994b;color:white;border-radius:28px;padding:10px 18px;cursor:grab;box-shadow:0 4px 16px rgba(0,0,0,.2);font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;user-select:none;white-space:nowrap;';
     const btnIcon = document.createElement('span');
-    btnIcon.textContent = '🔍';
+    btnIcon.textContent = savings > 0 ? '💰' : '🔍';
     const btnLabel = document.createElement('span');
     btnLabel.textContent = summary || 'Vis prissammenligning';
     btn.appendChild(btnIcon);
     btn.appendChild(btnLabel);
+
+    // Drag logic — distinguish click from drag
+    let isDragging = false, hasDragged = false, dragX, dragY, dragRight, dragBottom;
+
+    btn.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        hasDragged = false;
+        dragX = e.clientX;
+        dragY = e.clientY;
+        dragRight = parseInt(widget.style.right) || 24;
+        dragBottom = parseInt(widget.style.bottom) || 24;
+        btn.style.cursor = 'grabbing';
+        e.preventDefault();
+    });
+    document.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        const dx = e.clientX - dragX, dy = e.clientY - dragY;
+        if (Math.abs(dx) > 4 || Math.abs(dy) > 4) hasDragged = true;
+        widget.style.right = Math.max(0, dragRight - dx) + 'px';
+        widget.style.bottom = Math.max(0, dragBottom - dy) + 'px';
+    });
+    document.addEventListener('mouseup', () => {
+        if (!isDragging) return;
+        isDragging = false;
+        btn.style.cursor = 'grab';
+        if (hasDragged) {
+            sessionStorage.setItem('pp-pos', JSON.stringify({
+                right: parseInt(widget.style.right),
+                bottom: parseInt(widget.style.bottom)
+            }));
+        }
+    });
+
+    // Toggle open/close on click (ignored if was a drag)
     btn.addEventListener('click', () => {
-        panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+        if (hasDragged) return;
+        const isOpen = panel.style.display !== 'none';
+        panel.style.display = isOpen ? 'none' : 'block';
+        sessionStorage.setItem('pp-open', isOpen ? 'false' : 'true');
     });
 
     widget.appendChild(panel);
     widget.appendChild(btn);
     document.body.appendChild(widget);
 
-    // Auto-open panel to show results immediately
-    panel.style.display = 'block';
+    // Restore open/closed state — default open so user sees results immediately
+    panel.style.display = sessionStorage.getItem('pp-open') === 'false' ? 'none' : 'block';
 
     PriceTracker.attachTrackingHandlers();
     initializeToggleFunctionality();
