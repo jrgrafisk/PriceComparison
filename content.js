@@ -732,7 +732,7 @@ function findGTIN() {
     const eanRows = document.querySelectorAll('tr');
     for (const row of eanRows) {
         const cells = row.getElementsByTagName('td');
-        if (cells.length >= 2 && cells[0].textContent.trim().toLowerCase() === 'ean') {
+        if (cells.length >= 2 && /^(ean|gtin|gtins?)[\s:]*$/i.test(cells[0].textContent.trim())) {
             const gtin = cells[1].textContent.trim().replace(/[^0-9]/g, '');
             if (gtin.length >= 8 && gtin.length <= 14) {
                 console.log(`✅ Found GTIN from table: ${gtin}`);
