@@ -19,7 +19,8 @@
 	"https://*.cykelexperten.dk/*",
 	"https://*.fribikeshop.dk/*",
 	"https://*.alltricks.com/*",
-    "https://*.cykelshoppen.dk/*"
+    "https://*.cykelshoppen.dk/*",
+    "https://*.boerkopcykler.dk/*"
   ],
   "background": {
     "scripts": [

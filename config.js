@@ -125,6 +125,20 @@ const SHOPS = [
 	    defaultCurrency: "EUR"
     },
     {
+        name: "Børkop Cykler",
+        url: "https://boerkopcykler.dk/?show_omnisearch=true&clerk_query=",
+        priceSelector: ".myoclpuFinalPrice, .clerk-design-product-price.price-new",
+        gtinSelectors: [
+            {
+                type: "application/ld+json",
+                paths: ["gtin", "gtin13", "gtin8", "gtin12", "gtin14"]
+            }
+        ],
+        domain: "boerkopcykler.dk",
+        tablePosition: "#options",
+        defaultCurrency: "DKK"
+    },
+    {
 	    name: "R2 Bike",
 	    url: "https://r2-bike.com/search/?qs={gtin}&lang=eng",
 	    priceSelector: "meta[itemprop='price'], .ndGAfVKBrutto, .price.no-letter-spacing.productbox-price.mas-price-color, [itemprop='content']",

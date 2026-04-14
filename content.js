@@ -271,6 +271,28 @@ function extractInertiaPrice(html, shop) {
     return null;
 }
 
+function extractJSONLDPrice(html, gtin) {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const scripts = doc.querySelectorAll('script[type="application/ld+json"]');
+    for (const script of scripts) {
+        try {
+            const data = JSON.parse(script.textContent);
+            const items = Array.isArray(data) ? data : [data];
+            for (const item of items) {
+                if (!item.offers) continue;
+                const productGtin = item.gtin13 || item.gtin || item.gtin8 || item.gtin12 || item.gtin14;
+                if (productGtin && String(productGtin).trim() !== gtin) continue;
+                const offerList = Array.isArray(item.offers) ? item.offers : [item.offers];
+                for (const offer of offerList) {
+                    const price = parseFloat(offer.price);
+                    if (!isNaN(price) && price > 0) return String(offer.price);
+                }
+            }
+        } catch (e) {}
+    }
+    return null;
+}
+
 function displayPrice(responses, identifier, identifierType) {
     const currentPriceInfo = getCurrentPriceAndCurrency();
     if (!currentPriceInfo.price) {
@@ -292,8 +314,12 @@ function displayPrice(responses, identifier, identifierType) {
             } else {
                 const doc = new DOMParser().parseFromString(response.html, 'text/html');
                 const priceElement = doc.querySelector(shop.priceSelector);
-                if (!priceElement) return null;
-                priceText = priceElement.textContent.trim();
+                if (priceElement) {
+                    priceText = priceElement.textContent.trim();
+                } else {
+                    priceText = extractJSONLDPrice(response.html, identifier);
+                    if (!priceText) return null;
+                }
             }
             const { price, currency } = extractPriceAndCurrency(priceText);
             if (!price) return null;
