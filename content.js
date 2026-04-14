@@ -598,8 +598,9 @@ function extractPriceAndCurrency(priceText) {
     text = text.replace(/^(from|fra)\s+/i, '');
 
     // Determine currency
-    let currency = 'EUR';
+    let currency = null;
     if (text.includes('kr') || text.includes('DKK')) currency = 'DKK';
+    else if (text.includes('€') || text.includes('EUR')) currency = 'EUR';
 
     // Clean up the price
     let price = text.replace(/[€$£kr]/g, '').trim();
