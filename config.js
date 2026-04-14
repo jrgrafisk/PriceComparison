@@ -9,6 +9,22 @@ const EXCHANGE_RATES = {
 // Shop configurations
 const SHOPS = [
     {
+        name: "Bike24",
+        url: "https://www.bike24.com/search-result?searchTerm=",
+        priceSelector: ".price__value, .text-xl.leading-none.text-nowrap",
+        gtinSelectors: [
+            '[itemprop="gtin13"]',
+            '[itemprop="gtin"]',
+            {
+                type: "application/ld+json",
+                paths: ["gtin", "gtin13", "gtin8", "gtin12", "gtin14"]
+            }
+        ],
+        domain: "bike24.com",
+        tablePosition: ".product-availability__title",
+        defaultCurrency: "EUR"
+    },
+    {
         name: "Bike Discount",
         url: "https://www.bike-discount.de/en/search?sSearch=",
         priceSelector: "meta[itemprop='price'], #netz-price, .product--price",
@@ -123,6 +139,20 @@ const SHOPS = [
         domain: "alltricks.com",
 	    tablePosition: ".product-header-stock-delay",
 	    defaultCurrency: "EUR"
+    },
+    {
+        name: "Børkop Cykler",
+        url: "https://boerkopcykler.dk/?show_omnisearch=true&clerk_query=",
+        priceSelector: ".myoclpuFinalPrice, .clerk-design-product-price.price-new",
+        gtinSelectors: [
+            {
+                type: "application/ld+json",
+                paths: ["gtin", "gtin13", "gtin8", "gtin12", "gtin14"]
+            }
+        ],
+        domain: "boerkopcykler.dk",
+        tablePosition: "#options",
+        defaultCurrency: "DKK"
     },
     {
 	    name: "R2 Bike",
