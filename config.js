@@ -165,7 +165,7 @@ const SHOPS = [
         priceSelector: ".product-card__price",
         scriptExtract: {
             price: "product_obj\\.price\\s*=\\s*'([\\d.]+)'",
-            currency: "product_obj\\.currency\\s*=\\s*'([A-Z]+)'"
+            container: ".filter-products__row"
         },
         gtinSelectors: [
             {

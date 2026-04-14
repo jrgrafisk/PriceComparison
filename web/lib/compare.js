@@ -113,17 +113,25 @@ function parseDataPropsPrice(html, shop) {
 }
 
 function parseScriptPrice(html, shop) {
-    const { price: priceRegex, currency: currencyRegex } = shop.scriptExtract;
-    const allMatches = [...html.matchAll(new RegExp(priceRegex, 'g'))];
-    if (!allMatches.length) return null;
+    const { price: priceRegex, currency: currencyRegex, container } = shop.scriptExtract;
 
-    const prices = allMatches.map(m => parseFloat(m[1])).filter(p => !isNaN(p) && p > 0);
-    if (!prices.length) return null;
-    const price = Math.min(...prices);
+    let searchHtml = html;
+    if (container) {
+        const $ = cheerio.load(html);
+        const el = $(container).first();
+        if (el.length) {
+            searchHtml = el.find('script').map((i, s) => $(s).html() || '').get().join('\n');
+        }
+    }
+
+    const priceMatch = searchHtml.match(new RegExp(priceRegex));
+    if (!priceMatch) return null;
+    const price = parseFloat(priceMatch[1]);
+    if (isNaN(price) || price <= 0) return null;
 
     let currency = shop.defaultCurrency;
     if (currencyRegex) {
-        const currMatch = html.match(new RegExp(currencyRegex));
+        const currMatch = searchHtml.match(new RegExp(currencyRegex));
         if (currMatch) currency = currMatch[1];
     }
 
