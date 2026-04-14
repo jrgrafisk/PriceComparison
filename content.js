@@ -337,6 +337,15 @@ function displayPrice(responses, identifier, identifierType) {
             } else if (shop.dataProps) {
                 priceText = extractDataPropsPrice(response.html, shop);
                 if (!priceText) return null;
+            } else if (shop.scriptExtract) {
+                const priceMatch = response.html.match(new RegExp(shop.scriptExtract.price));
+                if (!priceMatch) return null;
+                let extracted = priceMatch[1];
+                if (shop.scriptExtract.currency) {
+                    const currMatch = response.html.match(new RegExp(shop.scriptExtract.currency));
+                    if (currMatch) extracted += ' ' + currMatch[1];
+                }
+                priceText = extracted;
             } else {
                 const doc = new DOMParser().parseFromString(response.html, 'text/html');
                 const priceElement = doc.querySelector(shop.priceSelector);
@@ -437,6 +446,21 @@ function debouncedPriceUpdate() {
 function getCurrentPriceAndCurrency() {
     const currentShop = SHOPS.find(shop => window.location.hostname.includes(shop.domain));
     if (!currentShop) return { price: null, currency: null };
+
+    // Try scriptExtract first if configured (handles shops with ambiguous CSS price elements)
+    if (currentShop.scriptExtract) {
+        const bodyHtml = document.body.innerHTML;
+        const priceMatch = bodyHtml.match(new RegExp(currentShop.scriptExtract.price));
+        if (priceMatch) {
+            const price = normalizePrice(priceMatch[1]);
+            let currency = currentShop.defaultCurrency;
+            if (currentShop.scriptExtract.currency) {
+                const currMatch = bodyHtml.match(new RegExp(currentShop.scriptExtract.currency));
+                if (currMatch) currency = currMatch[1];
+            }
+            if (price !== null) return { price, currency };
+        }
+    }
 
     // Use the configured price selector for the current shop
     const priceElement = document.querySelector(currentShop.priceSelector);

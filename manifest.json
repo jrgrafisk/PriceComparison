@@ -20,7 +20,8 @@
 	"https://*.cykelexperten.dk/*",
 	"https://*.alltricks.com/*",
     "https://*.cykelshoppen.dk/*",
-    "https://*.boerkopcykler.dk/*"
+    "https://*.boerkopcykler.dk/*",
+    "https://*.hollandbikeshop.com/*"
   ],
   "background": {
     "scripts": [

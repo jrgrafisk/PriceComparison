@@ -112,6 +112,25 @@ function parseDataPropsPrice(html, shop) {
     return null;
 }
 
+function parseScriptPrice(html, shop) {
+    const { price: priceRegex, currency: currencyRegex } = shop.scriptExtract;
+    const priceMatch = html.match(new RegExp(priceRegex));
+    if (!priceMatch) return null;
+    const price = parseFloat(priceMatch[1]);
+    if (isNaN(price) || price <= 0) return null;
+
+    let currency = shop.defaultCurrency;
+    if (currencyRegex) {
+        const currMatch = html.match(new RegExp(currencyRegex));
+        if (currMatch) currency = currMatch[1];
+    }
+
+    const priceText = currency === 'DKK'
+        ? `${price.toFixed(2).replace('.', ',')} kr.`
+        : `${price.toFixed(2)} €`;
+    return { priceText, price, currency };
+}
+
 function parseInertiaPrice(html, shop) {
     const $ = cheerio.load(html);
     const dataPage = $('[data-page]').attr('data-page');
@@ -156,9 +175,11 @@ async function fetchShopPrice(shop, gtin) {
             ? parseInertiaPrice(html, shop)
             : shop.dataProps
             ? parseDataPropsPrice(html, shop)
+            : shop.scriptExtract
+            ? parseScriptPrice(html, shop)
             : parseCSSPrice(html, shop);
 
-        // Fallback to JSON-LD when no structured data config and CSS finds nothing
+        // Fallback to JSON-LD when no structured data config and CSS/script finds nothing
         if (!priceData && !shop.inertia && !shop.dataProps) {
             priceData = parseJSONLDPrice(html, gtin, shop);
         }

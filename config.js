@@ -158,6 +158,24 @@ const SHOPS = [
         domain: "r2-bike.com",
         tablePosition: ".vat_info",
         defaultCurrency: "EUR"
+    },
+    {
+        name: "Holland Bike Shop",
+        url: "https://hollandbikeshop.com/da-dk/advanced_search_result.php?keywords=",
+        priceSelector: ".product-card__price",
+        scriptExtract: {
+            price: "product_obj\\.price\\s*=\\s*'([\\d.]+)'",
+            currency: "product_obj\\.currency\\s*=\\s*'([A-Z]+)'"
+        },
+        gtinSelectors: [
+            {
+                type: "application/ld+json",
+                paths: ["gtin13", "gtin"]
+            }
+        ],
+        domain: "hollandbikeshop.com",
+        tablePosition: ".color-sec__price",
+        defaultCurrency: "EUR"
     }
 ];
 
