@@ -160,6 +160,19 @@ const SHOPS = [
         defaultCurrency: "EUR"
     },
     {
+        name: "CS Megastore",
+        url: "https://www.csmegastore.dk/l/0/s?sq=",
+        priceSelector: ".m-product-card__price-text, .v-product-details__price",
+        gtinSelectors: [
+            ".productidstable td.value",
+            "[itemprop='gtin13']",
+            "[itemprop='gtin']"
+        ],
+        domain: "csmegastore.dk",
+        tablePosition: ".v-product-details__price",
+        defaultCurrency: "DKK"
+    },
+    {
         name: "Pedalatleten",
         url: "https://pedalatleten.dk/search/suggest.json?q=",
         urlSuffix: "&resources[type]=product",

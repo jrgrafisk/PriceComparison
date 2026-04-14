@@ -23,7 +23,8 @@
     "https://*.cykelshoppen.dk/*",
     "https://*.boerkopcykler.dk/*",
     "https://*.hollandbikeshop.com/*",
-    "https://*.pedalatleten.dk/*"
+    "https://*.pedalatleten.dk/*",
+    "https://*.csmegastore.dk/*"
   ],
   "background": {
     "scripts": [
