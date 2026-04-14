@@ -1,6 +1,10 @@
 const cheerio = require('cheerio');
 const { SHOPS, EXCHANGE_RATES } = require('../../config.js');
 
+// Track consecutive misses per shop for health monitoring
+const shopHealth = {};
+const HEALTH_WARNING_THRESHOLD = 5; // Log warning after 5 consecutive misses
+
 function buildUrl(shop, gtin) {
     if (shop.url.includes('{gtin}')) {
         return shop.url.replace('{gtin}', encodeURIComponent(gtin));
@@ -145,7 +149,17 @@ async function fetchShopPrice(shop, gtin) {
             priceData = parseJSONLDPrice(html, gtin, shop);
         }
 
-        if (!priceData) return null;
+        if (!priceData) {
+            // Track miss
+            shopHealth[shop.domain] = (shopHealth[shop.domain] || 0) + 1;
+            if (shopHealth[shop.domain] === HEALTH_WARNING_THRESHOLD) {
+                console.warn(`[HEALTH] ${shop.name} has failed ${HEALTH_WARNING_THRESHOLD} times — may be blocked or selector broken`);
+            }
+            return null;
+        }
+
+        // Reset miss counter on success
+        shopHealth[shop.domain] = 0;
 
         const dkkPrice = priceData.currency === 'DKK'
             ? priceData.price
@@ -158,8 +172,15 @@ async function fetchShopPrice(shop, gtin) {
             url
         };
     } catch (e) {
+        shopHealth[shop.domain] = (shopHealth[shop.domain] || 0) + 1;
+        if (shopHealth[shop.domain] === HEALTH_WARNING_THRESHOLD) {
+            console.warn(`[HEALTH] ${shop.name} has errored ${HEALTH_WARNING_THRESHOLD} times — ${e.message}`);
+        }
         if (e.name !== 'AbortError' && e.name !== 'TimeoutError') {
-            console.error(`[${shop.name}]`, e.message);
+            // Only log first error, not every retry
+            if (shopHealth[shop.domain] === 1) {
+                console.error(`[${shop.name}]`, e.message);
+            }
         }
         return null;
     }
