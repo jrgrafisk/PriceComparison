@@ -44,17 +44,10 @@ async function runSearch(query) {
 }
 
 function showLoading() {
-    const rows = SHOPS.map(name => `
-        <div class="shop-status-row" data-shop="${name}">
-            <span class="spinner"></span>
-            <span>${name}</span>
-        </div>
-    `).join('');
-
     resultsEl.innerHTML = `
         <div class="loading-box">
-            <div class="loading-title">Henter priser...</div>
-            ${rows}
+            <span class="spinner"></span>
+            <span class="loading-title">Henter priser...</span>
         </div>
     `;
 }
