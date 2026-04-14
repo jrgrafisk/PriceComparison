@@ -315,7 +315,8 @@ function displayPrice(responses, identifier, identifierType) {
                 const doc = new DOMParser().parseFromString(response.html, 'text/html');
                 const priceElement = doc.querySelector(shop.priceSelector);
                 if (priceElement) {
-                    priceText = priceElement.textContent.trim();
+                    priceText = priceElement.textContent.trim()
+                        .replace(/^(from|fra|ab|dès|vanaf)\s+/i, '').trim();
                 } else {
                     priceText = extractJSONLDPrice(response.html, identifier);
                     if (!priceText) return null;
