@@ -1,7 +1,7 @@
 const SHOPS = [
     'Bike Discount', 'Bike Components', 'Cykelgear', 'Cykelshoppen',
-    'AllBike', 'Cykelpartner', 'Cykelexperten', 'Fri Bike Shop (beta)',
-    'AllTricks (beta)', 'R2 Bike'
+    'AllBike', 'Cykelpartner', 'Cykelexperten', 'Børkop Cykler',
+    'Bike24', 'AllTricks', 'R2 Bike', 'Holland Bike Shop'
 ];
 
 const form = document.getElementById('compareForm');
@@ -13,6 +13,11 @@ form.addEventListener('submit', async (e) => {
     const val = input.value.trim();
     if (!val) return;
     await runSearch(val);
+});
+
+document.getElementById('exampleBtn').addEventListener('click', async () => {
+    input.value = '4019238054415';
+    await runSearch('4019238054415');
 });
 
 async function runSearch(query) {

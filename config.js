@@ -121,21 +121,8 @@ const SHOPS = [
 	    tablePosition: ".product-detail-price-container",
 	    defaultCurrency: "DKK"
     },
-	    {
-        name: "Fri Bike Shop (beta)",
-        url: "https://www.fribikeshop.dk/soeg?q=",
-        priceSelector: ".product__top--price pp-margin, .salesprice, .product-detail-price-container",
-        gtinSelectors: [
-            ".specifications__spec-value",
-            "[itemprop='gtin13']",
-            "[itemprop='gtin']"
-        ],
-        domain: "fribikeshop.dk",
-	    tablePosition: ".product__top--content-size",
-	    defaultCurrency: "DKK"
-    },
 	{
-	        name: "AllTricks (beta)",
+	        name: "AllTricks",
         url: "https://www.alltricks.com/Buy/",
         priceSelector: ".price, .alltricks-Product-wrapPrice",
         gtinSelectors: [
@@ -170,6 +157,24 @@ const SHOPS = [
         ],
         domain: "r2-bike.com",
         tablePosition: ".vat_info",
+        defaultCurrency: "EUR"
+    },
+    {
+        name: "Holland Bike Shop",
+        url: "https://hollandbikeshop.com/da-dk/advanced_search_result.php?keywords=",
+        priceSelector: ".product-card__price",
+        scriptExtract: {
+            price: "product_obj\\.price\\s*=\\s*'([\\d.]+)'",
+            currency: "product_obj\\.currency\\s*=\\s*'([A-Z]+)'"
+        },
+        gtinSelectors: [
+            {
+                type: "application/ld+json",
+                paths: ["gtin13", "gtin"]
+            }
+        ],
+        domain: "hollandbikeshop.com",
+        tablePosition: ".color-sec__price",
         defaultCurrency: "EUR"
     }
 ];

@@ -5,6 +5,84 @@ let enabledShops = {};
 document.addEventListener('DOMContentLoaded', async () => {
     const shopList = document.getElementById('shopList');
     const saveButton = document.getElementById('saveButton');
+
+    // Tab switching
+    document.querySelectorAll('.pp-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.pp-tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            const isCart = tab.dataset.tab === 'cart';
+            document.getElementById('panelShops').style.display = isCart ? 'none' : 'block';
+            document.getElementById('panelCart').style.display = isCart ? 'block' : 'none';
+            if (isCart) renderCart();
+        });
+    });
+
+    async function renderCart() {
+        const data = await browser.storage.local.get('cart');
+        const cart = data.cart || [];
+        const tabCartEl = document.getElementById('tabCart');
+        const cartItemsEl = document.getElementById('cartItems');
+        const cartTotalEl = document.getElementById('cartTotal');
+
+        tabCartEl.textContent = cart.length > 0 ? `Kurv (${cart.length})` : 'Kurv';
+        cartItemsEl.textContent = '';
+
+        if (cart.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'cart-empty';
+            empty.textContent = 'Din kurv er tom. Tilføj produkter via prissammenligningen.';
+            cartItemsEl.appendChild(empty);
+            cartTotalEl.style.display = 'none';
+            return;
+        }
+
+        cart.forEach(item => {
+            const div = document.createElement('div');
+            div.className = 'cart-item';
+
+            const info = document.createElement('div');
+            info.className = 'cart-item-info';
+
+            const name = document.createElement('div');
+            name.className = 'cart-item-name';
+            name.textContent = item.name || 'Ukendt produkt';
+            name.title = item.name || '';
+
+            const priceRow = document.createElement('div');
+            priceRow.className = 'cart-item-price';
+            priceRow.textContent = item.bestPrice
+                ? `${item.bestPrice.dkkPrice} kr. (${item.bestPrice.shop})`
+                : 'Pris ukendt';
+
+            const link = document.createElement('a');
+            link.className = 'cart-item-link';
+            link.href = item.bestPrice?.url || item.sourceUrl || '#';
+            link.target = '_blank';
+            link.textContent = 'Se hos forhandler';
+
+            info.appendChild(name);
+            info.appendChild(priceRow);
+            info.appendChild(link);
+
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'cart-remove';
+            removeBtn.textContent = '✕';
+            removeBtn.addEventListener('click', async () => {
+                const d = await browser.storage.local.get('cart');
+                await browser.storage.local.set({ cart: (d.cart || []).filter(i => i.id !== item.id) });
+                renderCart();
+            });
+
+            div.appendChild(info);
+            div.appendChild(removeBtn);
+            cartItemsEl.appendChild(div);
+        });
+
+        const total = cart.reduce((sum, item) => sum + (item.bestPrice?.dkkPrice || 0), 0);
+        cartTotalEl.textContent = `Total: ${total} kr.`;
+        cartTotalEl.style.display = 'block';
+    }
     
     // Get current enabled state from storage
     const data = await browser.storage.sync.get('enabledShops');
@@ -149,4 +227,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             }, 2000);
         }
     });
+
+    renderCart(); // update tab badge on popup open
 });

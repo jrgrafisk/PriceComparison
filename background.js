@@ -28,6 +28,16 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true; // Keep the message channel open for async response
     }
 
+    // Handle badge update from content script
+    if (message.action === 'setBadge') {
+        const text = message.count > 0 ? message.count.toString() : '';
+        browser.browserAction.setBadgeText({ text, tabId: sender.tab?.id });
+        if (message.count > 0) {
+            browser.browserAction.setBadgeBackgroundColor({ color: '#4caf50', tabId: sender.tab?.id });
+        }
+        return false;
+    }
+
     // Handle shopsUpdated action
     if (message.action === 'shopsUpdated') {
         // Broadcast to all tabs
