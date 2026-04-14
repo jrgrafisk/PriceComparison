@@ -7,6 +7,7 @@
     "activeTab",
     "storage",
     "https://*.cykelgear.dk/*",
+    "https://*.bike24.com/*",
     "https://*.bike-discount.de/*",
     "https://*.bikable.no/*",
     "https://*.bikable.com/*",
