@@ -1481,7 +1481,19 @@ async function findAndComparePrice() {
         };
 
         // Hent priser fra alle shops (med skip-mulighed)
-        const { responses } = await searchWithIdentifier(gtin, 'GTIN', onShopResult, skipSignal);
+        let { responses } = await searchWithIdentifier(gtin, 'GTIN', onShopResult, skipSignal);
+
+        // Tilføj det aktuelle site med den allerede-indlæste produktside
+        // så det originale shop altid indgår i sammenligningen
+        const currentShop = SHOPS.find(s => window.location.hostname.includes(s.domain));
+        if (currentShop) {
+            // Fjern eventuel søgesideresultat for det aktuelle shop (produktsiden er mere præcis)
+            responses = responses.filter(r => !r.url.includes(currentShop.domain));
+            responses.push({
+                html: document.documentElement.outerHTML,
+                url: window.location.href
+            });
+        }
 
         // Markér eventuelle shops der stadig ventede (brugeren trykkede spring over)
         document.querySelectorAll('#pp-shop-status [data-domain] .shop-spinner').forEach(spinner => {
