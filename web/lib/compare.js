@@ -141,6 +141,22 @@ function parseScriptPrice(html, shop) {
     return { priceText, price, currency };
 }
 
+function parseShopifySearchPrice(text, shop) {
+    let json;
+    try { json = JSON.parse(text); } catch (e) { return null; }
+    const products = json?.resources?.results?.products;
+    if (!products || products.length === 0) return null;
+    // Shopify returns price in cents (e.g. "39900" = 399.00 DKK)
+    const cents = parseInt(products[0].price, 10);
+    if (isNaN(cents) || cents <= 0) return null;
+    const price = cents / 100;
+    const currency = shop.defaultCurrency || 'DKK';
+    const priceText = currency === 'DKK'
+        ? `${price.toFixed(2).replace('.', ',')} kr.`
+        : `${price.toFixed(2)} €`;
+    return { priceText, price, currency };
+}
+
 function parseInertiaPrice(html, shop) {
     const $ = cheerio.load(html);
     const dataPage = $('[data-page]').attr('data-page');
@@ -181,7 +197,9 @@ async function fetchShopPrice(shop, gtin) {
         if (!res.ok) return null;
         const html = await res.text();
 
-        let priceData = shop.inertia
+        let priceData = shop.shopifySearch
+            ? parseShopifySearchPrice(html, shop)
+            : shop.inertia
             ? parseInertiaPrice(html, shop)
             : shop.dataProps
             ? parseDataPropsPrice(html, shop)

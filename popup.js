@@ -27,15 +27,97 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         tabCartEl.textContent = cart.length > 0 ? `Kurv (${cart.length})` : 'Kurv';
         cartItemsEl.textContent = '';
+        cartTotalEl.style.display = 'none';
 
         if (cart.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'cart-empty';
             empty.textContent = 'Din kurv er tom. Tilføj produkter via prissammenligningen.';
             cartItemsEl.appendChild(empty);
-            cartTotalEl.style.display = 'none';
             return;
         }
+
+        // Build per-shop totals
+        const shopMap = {};
+        cart.forEach(item => {
+            (item.prices || []).forEach(p => {
+                if (!shopMap[p.shop]) shopMap[p.shop] = { total: 0, count: 0 };
+                shopMap[p.shop].total += p.dkkPrice;
+                shopMap[p.shop].count++;
+            });
+        });
+        const n = cart.length;
+        const complete = Object.entries(shopMap).filter(([,s]) => s.count === n).sort((a,b) => a[1].total - b[1].total);
+        const partial  = Object.entries(shopMap).filter(([,s]) => s.count  < n).sort((a,b) => a[1].total - b[1].total);
+        const best = complete[0] || partial[0];
+
+        // Recommendation box
+        if (best) {
+            const rec = document.createElement('div');
+            rec.style.cssText = 'background:#fff8f0;border:1px solid #f2994b;border-radius:8px;padding:10px 12px;margin-bottom:12px;';
+
+            const label = document.createElement('div');
+            label.style.cssText = 'font-size:11px;color:#999;margin-bottom:3px;';
+            label.textContent = complete.length ? 'Saml din ordre hos' : 'Bedste delvise match';
+
+            const shopName = document.createElement('div');
+            shopName.style.cssText = 'font-size:15px;font-weight:700;color:#e65100;';
+            shopName.textContent = `${best[0]} — ${best[1].total} kr.`;
+
+            rec.appendChild(label);
+            rec.appendChild(shopName);
+
+            if (!complete.length) {
+                const caveat = document.createElement('div');
+                caveat.style.cssText = 'font-size:11px;color:#bbb;margin-top:2px;';
+                caveat.textContent = `${best[1].count} af ${n} produkter tilgængeligt`;
+                rec.appendChild(caveat);
+            }
+            cartItemsEl.appendChild(rec);
+        }
+
+        // Other complete shops
+        complete.slice(1).forEach(([name, s]) => {
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f8f8f8;font-size:13px;';
+            const nameEl = document.createElement('span');
+            nameEl.textContent = name;
+            const priceEl = document.createElement('span');
+            priceEl.style.fontWeight = '600';
+            priceEl.textContent = `${s.total} kr.`;
+            row.appendChild(nameEl);
+            row.appendChild(priceEl);
+            cartItemsEl.appendChild(row);
+        });
+
+        // Incomplete shops (greyed)
+        if (partial.length) {
+            const sep = document.createElement('div');
+            sep.style.cssText = 'font-size:11px;color:#ccc;margin:10px 0 5px;padding-top:8px;border-top:1px solid #f5f5f5;';
+            sep.textContent = 'Ikke alle produkter tilgængeligt:';
+            cartItemsEl.appendChild(sep);
+            partial.forEach(([name, s]) => {
+                const row = document.createElement('div');
+                row.style.cssText = 'display:flex;justify-content:space-between;padding:4px 0;font-size:12px;color:#ccc;';
+                const nameEl = document.createElement('span');
+                nameEl.textContent = `${name} (${s.count}/${n})`;
+                const priceEl = document.createElement('span');
+                priceEl.textContent = `${s.total} kr.*`;
+                row.appendChild(nameEl);
+                row.appendChild(priceEl);
+                cartItemsEl.appendChild(row);
+            });
+            const note = document.createElement('div');
+            note.style.cssText = 'font-size:10px;color:#ddd;margin-top:3px;';
+            note.textContent = '* Delsum — ikke alle produkter er med';
+            cartItemsEl.appendChild(note);
+        }
+
+        // Product list with remove buttons
+        const divider = document.createElement('div');
+        divider.style.cssText = 'font-size:11px;color:#bbb;margin:12px 0 6px;padding-top:8px;border-top:1px solid #f0f0f0;';
+        divider.textContent = `Produkter (${n})`;
+        cartItemsEl.appendChild(divider);
 
         cart.forEach(item => {
             const div = document.createElement('div');
@@ -49,21 +131,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             name.textContent = item.name || 'Ukendt produkt';
             name.title = item.name || '';
 
-            const priceRow = document.createElement('div');
-            priceRow.className = 'cart-item-price';
-            priceRow.textContent = item.bestPrice
-                ? `${item.bestPrice.dkkPrice} kr. (${item.bestPrice.shop})`
-                : 'Pris ukendt';
-
-            const link = document.createElement('a');
-            link.className = 'cart-item-link';
-            link.href = item.bestPrice?.url || item.sourceUrl || '#';
-            link.target = '_blank';
-            link.textContent = 'Se hos forhandler';
-
             info.appendChild(name);
-            info.appendChild(priceRow);
-            info.appendChild(link);
 
             const removeBtn = document.createElement('button');
             removeBtn.className = 'cart-remove';
@@ -78,10 +146,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             div.appendChild(removeBtn);
             cartItemsEl.appendChild(div);
         });
-
-        const total = cart.reduce((sum, item) => sum + (item.bestPrice?.dkkPrice || 0), 0);
-        cartTotalEl.textContent = `Total: ${total} kr.`;
-        cartTotalEl.style.display = 'block';
     }
     
     // Get current enabled state from storage

@@ -337,6 +337,18 @@ function displayPrice(responses, identifier, identifierType) {
             } else if (shop.dataProps) {
                 priceText = extractDataPropsPrice(response.html, shop);
                 if (!priceText) return null;
+            } else if (shop.shopifySearch) {
+                try {
+                    const json = JSON.parse(response.html);
+                    const products = json?.resources?.results?.products;
+                    if (!products || products.length === 0) return null;
+                    // Shopify returns price in cents (e.g. "39900" = 399.00 DKK)
+                    const cents = parseInt(products[0].price, 10);
+                    if (isNaN(cents) || cents <= 0) return null;
+                    priceText = String(cents / 100);
+                } catch (e) {
+                    return null;
+                }
             } else if (shop.scriptExtract) {
                 let searchHtml = response.html;
                 if (shop.scriptExtract.container) {
@@ -1964,6 +1976,12 @@ function insertComparisonTable(shop, comparisonMessage, retryCount = 0, summary 
     hdr.style.cssText = 'background:#f2994b;color:white;padding:12px 16px;font-weight:700;font-size:14px;display:flex;justify-content:space-between;align-items:center;';
     const hdrTitle = document.createElement('span');
     hdrTitle.textContent = 'Prissammenligning';
+    const hdrRight = document.createElement('div');
+    hdrRight.style.cssText = 'display:flex;align-items:center;gap:10px;';
+    const cartIconBtn = document.createElement('button');
+    cartIconBtn.textContent = '🛒';
+    cartIconBtn.title = 'Kurv';
+    cartIconBtn.style.cssText = 'background:none;border:none;color:white;cursor:pointer;font-size:15px;padding:0;line-height:1;opacity:.85;';
     const closeBtn = document.createElement('button');
     closeBtn.textContent = '✕';
     closeBtn.style.cssText = 'background:none;border:none;color:white;cursor:pointer;font-size:16px;padding:0;line-height:1;opacity:.85;';
@@ -1972,8 +1990,10 @@ function insertComparisonTable(shop, comparisonMessage, retryCount = 0, summary 
         panel.style.display = 'none';
         sessionStorage.setItem('pp-open', 'false');
     });
+    hdrRight.appendChild(cartIconBtn);
+    hdrRight.appendChild(closeBtn);
     hdr.appendChild(hdrTitle);
-    hdr.appendChild(closeBtn);
+    hdr.appendChild(hdrRight);
     panel.appendChild(hdr);
 
     // Panel body
@@ -1983,6 +2003,133 @@ function insertComparisonTable(shop, comparisonMessage, retryCount = 0, summary 
     const parsed = new DOMParser().parseFromString(comparisonMessage, 'text/html');
     Array.from(parsed.body.childNodes).forEach(node => body.appendChild(node));
     panel.appendChild(body);
+
+    // Cart panel (hidden until cart icon clicked)
+    const widgetCartPanel = document.createElement('div');
+    widgetCartPanel.style.cssText = 'overflow-y:auto;max-height:60vh;padding:12px 16px;display:none;';
+
+    async function renderWidgetCart() {
+        widgetCartPanel.textContent = '';
+        const data = await browser.storage.local.get('cart');
+        const cart = data.cart || [];
+        if (cart.length === 0) {
+            const empty = document.createElement('div');
+            empty.style.cssText = 'color:#bbb;font-size:13px;text-align:center;padding:20px 0;';
+            empty.textContent = 'Din kurv er tom. Tilføj produkter via prissammenligningen.';
+            widgetCartPanel.appendChild(empty);
+            return;
+        }
+
+        // Build per-shop totals
+        const shopMap = {};
+        cart.forEach(item => {
+            (item.prices || []).forEach(p => {
+                if (!shopMap[p.shop]) shopMap[p.shop] = { total: 0, count: 0 };
+                shopMap[p.shop].total += p.dkkPrice;
+                shopMap[p.shop].count++;
+            });
+        });
+        const n = cart.length;
+        const complete = Object.entries(shopMap).filter(([,s]) => s.count === n).sort((a,b) => a[1].total - b[1].total);
+        const partial  = Object.entries(shopMap).filter(([,s]) => s.count  < n).sort((a,b) => a[1].total - b[1].total);
+        const best = complete[0] || partial[0];
+
+        // Recommendation box
+        if (best) {
+            const rec = document.createElement('div');
+            rec.style.cssText = 'background:#fff8f0;border:1px solid #f2994b;border-radius:8px;padding:10px 12px;margin-bottom:12px;';
+            const label = document.createElement('div');
+            label.style.cssText = 'font-size:11px;color:#999;margin-bottom:3px;';
+            label.textContent = complete.length ? 'Saml din ordre hos' : 'Bedste delvise match';
+            const shopName = document.createElement('div');
+            shopName.style.cssText = 'font-size:15px;font-weight:700;color:#e65100;';
+            shopName.textContent = `${best[0]} — ${best[1].total} kr.`;
+            rec.appendChild(label);
+            rec.appendChild(shopName);
+            if (!complete.length) {
+                const caveat = document.createElement('div');
+                caveat.style.cssText = 'font-size:11px;color:#bbb;margin-top:2px;';
+                caveat.textContent = `${best[1].count} af ${n} produkter tilgængeligt`;
+                rec.appendChild(caveat);
+            }
+            widgetCartPanel.appendChild(rec);
+        }
+
+        // Other complete shops
+        complete.slice(1).forEach(([name, s]) => {
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f8f8f8;font-size:13px;';
+            const nameEl = document.createElement('span'); nameEl.textContent = name;
+            const priceEl = document.createElement('span'); priceEl.style.fontWeight = '600'; priceEl.textContent = `${s.total} kr.`;
+            row.appendChild(nameEl); row.appendChild(priceEl);
+            widgetCartPanel.appendChild(row);
+        });
+
+        // Incomplete shops (greyed)
+        if (partial.length) {
+            const sep = document.createElement('div');
+            sep.style.cssText = 'font-size:11px;color:#ccc;margin:10px 0 5px;padding-top:8px;border-top:1px solid #f5f5f5;';
+            sep.textContent = 'Ikke alle produkter tilgængeligt:';
+            widgetCartPanel.appendChild(sep);
+            partial.forEach(([name, s]) => {
+                const row = document.createElement('div');
+                row.style.cssText = 'display:flex;justify-content:space-between;padding:4px 0;font-size:12px;color:#ccc;';
+                const nameEl = document.createElement('span'); nameEl.textContent = `${name} (${s.count}/${n})`;
+                const priceEl = document.createElement('span'); priceEl.textContent = `${s.total} kr.*`;
+                row.appendChild(nameEl); row.appendChild(priceEl);
+                widgetCartPanel.appendChild(row);
+            });
+            const note = document.createElement('div');
+            note.style.cssText = 'font-size:10px;color:#ddd;margin-top:3px;';
+            note.textContent = '* Delsum — ikke alle produkter er med';
+            widgetCartPanel.appendChild(note);
+        }
+
+        // Product list with remove buttons
+        const divider = document.createElement('div');
+        divider.style.cssText = 'font-size:11px;color:#bbb;margin:12px 0 6px;padding-top:8px;border-top:1px solid #f0f0f0;';
+        divider.textContent = `Produkter (${n})`;
+        widgetCartPanel.appendChild(divider);
+        cart.forEach(item => {
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;align-items:center;padding:4px 0;gap:6px;';
+            const nameEl = document.createElement('div');
+            nameEl.style.cssText = 'flex-grow:1;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#555;';
+            nameEl.textContent = item.name || 'Ukendt produkt';
+            const removeBtn = document.createElement('button');
+            removeBtn.textContent = '✕';
+            removeBtn.style.cssText = 'background:none;border:none;cursor:pointer;color:#ddd;font-size:12px;padding:0;flex-shrink:0;';
+            removeBtn.addEventListener('click', async () => {
+                const d = await browser.storage.local.get('cart');
+                await browser.storage.local.set({ cart: (d.cart || []).filter(i => i.id !== item.id) });
+                renderWidgetCart();
+            });
+            row.appendChild(nameEl); row.appendChild(removeBtn);
+            widgetCartPanel.appendChild(row);
+        });
+    }
+
+    cartIconBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const inCart = widgetCartPanel.style.display !== 'none';
+        if (inCart) {
+            widgetCartPanel.style.display = 'none';
+            body.style.display = 'block';
+            hdrTitle.textContent = 'Prissammenligning';
+            cartIconBtn.textContent = '🛒';
+            cartIconBtn.title = 'Kurv';
+        } else {
+            body.style.display = 'none';
+            widgetCartPanel.style.display = 'block';
+            hdrTitle.textContent = 'Kurv';
+            cartIconBtn.textContent = '← Priser';
+            cartIconBtn.title = 'Tilbage til priser';
+            cartIconBtn.style.fontSize = '12px';
+            await renderWidgetCart();
+        }
+    });
+
+    panel.appendChild(widgetCartPanel);
 
     // Cart button
     if (lastCartPayload) {
