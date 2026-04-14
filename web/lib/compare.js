@@ -114,10 +114,12 @@ function parseDataPropsPrice(html, shop) {
 
 function parseScriptPrice(html, shop) {
     const { price: priceRegex, currency: currencyRegex } = shop.scriptExtract;
-    const priceMatch = html.match(new RegExp(priceRegex));
-    if (!priceMatch) return null;
-    const price = parseFloat(priceMatch[1]);
-    if (isNaN(price) || price <= 0) return null;
+    const allMatches = [...html.matchAll(new RegExp(priceRegex, 'g'))];
+    if (!allMatches.length) return null;
+
+    const prices = allMatches.map(m => parseFloat(m[1])).filter(p => !isNaN(p) && p > 0);
+    if (!prices.length) return null;
+    const price = Math.min(...prices);
 
     let currency = shop.defaultCurrency;
     if (currencyRegex) {

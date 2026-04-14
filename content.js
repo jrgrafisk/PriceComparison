@@ -338,9 +338,11 @@ function displayPrice(responses, identifier, identifierType) {
                 priceText = extractDataPropsPrice(response.html, shop);
                 if (!priceText) return null;
             } else if (shop.scriptExtract) {
-                const priceMatch = response.html.match(new RegExp(shop.scriptExtract.price));
-                if (!priceMatch) return null;
-                let extracted = priceMatch[1];
+                const allMatches = [...response.html.matchAll(new RegExp(shop.scriptExtract.price, 'g'))];
+                if (!allMatches.length) return null;
+                const prices = allMatches.map(m => parseFloat(m[1])).filter(p => !isNaN(p) && p > 0);
+                if (!prices.length) return null;
+                let extracted = String(Math.min(...prices));
                 if (shop.scriptExtract.currency) {
                     const currMatch = response.html.match(new RegExp(shop.scriptExtract.currency));
                     if (currMatch) extracted += ' ' + currMatch[1];
