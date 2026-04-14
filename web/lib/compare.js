@@ -185,16 +185,25 @@ function parseInertiaPrice(html, shop) {
 }
 
 async function fetchShopPrice(shop, gtin) {
+    if (shop.extensionOnly) return { result: null, shop: shop.name, status: 'extension-only' };
+
     const url = buildUrl(shop, gtin);
     const timeout = shop.timeout || 8000;
 
     try {
         const res = await fetch(url, {
-            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36' },
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                'Accept-Language': 'da-DK,da;q=0.9,en-US;q=0.8,en;q=0.7',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Cache-Control': 'max-age=0',
+                'Upgrade-Insecure-Requests': '1'
+            },
             signal: AbortSignal.timeout(timeout)
         });
 
-        if (!res.ok) return null;
+        if (!res.ok) return { result: null, shop: shop.name, status: `http-${res.status}` };
         const html = await res.text();
 
         let priceData = shop.shopifySearch
@@ -213,15 +222,13 @@ async function fetchShopPrice(shop, gtin) {
         }
 
         if (!priceData) {
-            // Track miss
             shopHealth[shop.domain] = (shopHealth[shop.domain] || 0) + 1;
             if (shopHealth[shop.domain] === HEALTH_WARNING_THRESHOLD) {
                 writeHealthLog(`[HEALTH] ${shop.name} has failed ${HEALTH_WARNING_THRESHOLD} times in a row — may be blocked or selector broken`);
             }
-            return null;
+            return { result: null, shop: shop.name, status: 'no-match' };
         }
 
-        // Reset miss counter on success
         shopHealth[shop.domain] = 0;
 
         const dkkPrice = priceData.currency === 'DKK'
@@ -229,31 +236,28 @@ async function fetchShopPrice(shop, gtin) {
             : priceData.price * EXCHANGE_RATES.EUR_TO_DKK;
 
         return {
+            result: { shop: shop.name, priceText: priceData.priceText, dkkPrice: Math.round(dkkPrice), url },
             shop: shop.name,
-            priceText: priceData.priceText,
-            dkkPrice: Math.round(dkkPrice),
-            url
+            status: 'ok'
         };
     } catch (e) {
         shopHealth[shop.domain] = (shopHealth[shop.domain] || 0) + 1;
         if (shopHealth[shop.domain] === HEALTH_WARNING_THRESHOLD) {
             writeHealthLog(`[HEALTH] ${shop.name} has errored ${HEALTH_WARNING_THRESHOLD} times in a row — ${e.message}`);
         }
-        if (e.name !== 'AbortError' && e.name !== 'TimeoutError') {
-            // Only log first error, not every retry
-            if (shopHealth[shop.domain] === 1) {
-                console.error(`[${shop.name}]`, e.message);
-            }
+        const status = (e.name === 'AbortError' || e.name === 'TimeoutError') ? 'timeout' : 'error';
+        if (status === 'error' && shopHealth[shop.domain] === 1) {
+            console.error(`[${shop.name}]`, e.message);
         }
-        return null;
+        return { result: null, shop: shop.name, status };
     }
 }
 
 async function compareByGTIN(gtin) {
-    const results = await Promise.all(SHOPS.map(shop => fetchShopPrice(shop, gtin)));
-    return results
-        .filter(Boolean)
-        .sort((a, b) => a.dkkPrice - b.dkkPrice);
+    const raw = await Promise.all(SHOPS.map(shop => fetchShopPrice(shop, gtin)));
+    const results = raw.filter(r => r.result).map(r => r.result).sort((a, b) => a.dkkPrice - b.dkkPrice);
+    const shopStatus = Object.fromEntries(raw.map(r => [r.shop, r.status]));
+    return { results, shopStatus };
 }
 
 module.exports = { compareByGTIN };

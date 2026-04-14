@@ -81,9 +81,15 @@ function showResults(data) {
         `;
     }).join('');
 
+    const statusLabels = { timeout: 'timeout', 'http-403': 'blokeret', 'http-429': 'rate-limit', 'no-match': 'ikke fundet', error: 'fejl', 'extension-only': 'kun extension' };
+    const failed = data.shopStatus
+        ? Object.entries(data.shopStatus).filter(([, s]) => s !== 'ok').map(([name, s]) => `${name} (${statusLabels[s] || s})`).join(', ')
+        : '';
+
     resultsEl.innerHTML = `
         <p class="result-gtin">Stregkode: <span>${data.gtin}</span> · ${data.results.length} butik${data.results.length !== 1 ? 'ker' : ''} fundet</p>
         ${cards}
+        ${failed ? `<p style="font-size:11px;color:#bbb;margin-top:12px;">Ikke tilgængelig på webversionen: ${failed}</p>` : ''}
     `;
 }
 

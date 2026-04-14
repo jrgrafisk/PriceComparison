@@ -33,8 +33,8 @@ app.post('/api/compare', async (req, res) => {
             return res.status(400).json({ error: 'Ugyldigt format. Indsæt en gyldig EAN/GTIN (8–14 cifre) eller en produkt-URL.' });
         }
 
-        const results = await compareByGTIN(gtin);
-        res.json({ gtin, results });
+        const { results, shopStatus } = await compareByGTIN(gtin);
+        res.json({ gtin, results, shopStatus });
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Der opstod en fejl. Prøv igen.' });

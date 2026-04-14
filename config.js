@@ -135,6 +135,7 @@ const SHOPS = [
     },
     {
         name: "Børkop Cykler",
+        extensionOnly: true,
         url: "https://boerkopcykler.dk/?show_omnisearch=true&clerk_query=",
         priceSelector: ".myoclpuFinalPrice, .clerk-design-product-price.price-new",
         gtinSelectors: [
