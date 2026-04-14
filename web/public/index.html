@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PedalPricer – Sammenlign priser på cykeldele</title>
+    <meta name="description" content="PedalPricer søger 10 cykelbutikker og finder den bedste pris på cykeldele – automatisk.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/styles.css">
+    <link rel="icon" type="image/png" href="/icons/48x48pp.png">
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+    <div class="nav-inner">
+        <div class="logo">
+            <img src="/icons/48x48pp.png" alt="PedalPricer logo">
+            PedalPricer
+        </div>
+        <a class="btn btn-primary"
+           href="https://addons.mozilla.org/en-US/firefox/addon/pedalpricer/"
+           target="_blank" rel="noopener">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm0 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2z"/>
+            </svg>
+            Tilføj til Firefox
+        </a>
+    </div>
+</nav>
+
+<!-- HERO -->
+<section>
+    <div class="hero">
+        <div class="hero-text">
+            <h1>Find den bedste pris på <span>cykeldele</span> – automatisk</h1>
+            <p>PedalPricer søger 10 cykelbutikker på sekunder og viser dig med det samme, hvor du sparer mest.</p>
+            <div class="hero-cta">
+                <a class="btn btn-primary btn-large"
+                   href="https://addons.mozilla.org/en-US/firefox/addon/pedalpricer/"
+                   target="_blank" rel="noopener">
+                    Tilføj til Firefox – det er gratis
+                </a>
+                <span class="btn btn-outline btn-large" style="cursor:default;">
+                    Chrome
+                    <span class="badge">Kommer snart</span>
+                </span>
+            </div>
+        </div>
+
+        <div class="hero-visual">
+            <div class="visual-title">Prissammenligning</div>
+            <div class="shop-row">
+                <span class="shop-name">Cykelgear</span>
+                <span class="shop-price best">549 kr.</span>
+            </div>
+            <div class="shop-row">
+                <span class="shop-name">Bike Discount</span>
+                <span class="shop-price">574 kr.</span>
+            </div>
+            <div class="shop-row">
+                <span class="shop-name">AllBike</span>
+                <span class="shop-price">599 kr.</span>
+            </div>
+            <div class="shop-row">
+                <span class="shop-name">Cykelpartner</span>
+                <span class="shop-price">619 kr.</span>
+            </div>
+            <div class="shop-row">
+                <span class="shop-name">R2 Bike</span>
+                <span class="shop-price">632 kr.</span>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- WEB TOOL -->
+<section class="tool-section" id="tool">
+    <div class="container">
+        <h2>Prøv det nu</h2>
+        <p>Indsæt en produkt-URL fra en af de understøttede butikker, eller skriv EAN/GTIN-stregkoden direkte.</p>
+
+        <form id="compareForm" class="search-bar">
+            <input
+                type="text"
+                id="searchInput"
+                placeholder="fx https://www.bike-discount.de/en/... eller 4019238326659"
+                autocomplete="off"
+                spellcheck="false"
+            >
+            <button type="submit" class="btn btn-primary btn-large">
+                Sammenlign priser
+            </button>
+        </form>
+
+        <div id="results"></div>
+    </div>
+</section>
+
+<!-- FEATURES -->
+<section>
+    <div class="features-section">
+        <div class="feature-card">
+            <div class="feature-icon">⚡</div>
+            <h3>Hurtig</h3>
+            <p>Alle 10 butikker søges parallelt. Resultater vises inden for få sekunder, uden du behøver gøre noget.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon">🎯</div>
+            <h3>Præcis</h3>
+            <p>PedalPricer bruger EAN/GTIN-stregkoder til at matche det nøjagtige produkt – ikke bare et lignende.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon">🔓</div>
+            <h3>Gratis</h3>
+            <p>Ingen konto, ingen abonnement, ingen tracking. Open source og helt gratis at bruge.</p>
+        </div>
+    </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+    <p>© 2026 PedalPricer · <a href="https://addons.mozilla.org/en-US/firefox/addon/pedalpricer/" target="_blank" rel="noopener" style="color:var(--orange);">Firefox Add-on</a></p>
+</footer>
+
+<script src="/js/app.js"></script>
+</body>
+</html>

@@ -53,6 +53,47 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialize save button state
     saveButton.disabled = !hasChanges;
 
+    // Request site addition button
+    const requestSiteButton = document.getElementById('requestSiteButton');
+    const requestStatus = document.getElementById('requestStatus');
+    let siteUrl = null;
+
+    // Get the current tab URL for display
+    browser.tabs.query({ active: true, currentWindow: true }).then(tabs => {
+        siteUrl = tabs[0]?.url || null;
+        if (siteUrl) {
+            const hostname = new URL(siteUrl).hostname.replace(/^www\./, '');
+            requestSiteButton.title = siteUrl;
+            requestSiteButton.textContent = `Anmod om tilføjelse af ${hostname}`;
+        }
+    });
+
+    requestSiteButton.addEventListener('click', async () => {
+        if (!siteUrl) return;
+        requestSiteButton.disabled = true;
+        requestStatus.textContent = 'Sender anmodning...';
+        requestStatus.style.color = '#666';
+
+        try {
+            await fetch('https://jrgrafisk.dk/php-endpoint.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'siteRequest',
+                    url: siteUrl,
+                    timestamp: new Date().toISOString()
+                })
+            });
+            requestStatus.style.color = 'green';
+            requestStatus.textContent = '✓ Anmodning sendt! Tak.';
+        } catch (e) {
+            const mailBody = encodeURIComponent(`Hej,\n\nJeg ønsker, at følgende site tilføjes til PedalPricer:\n${siteUrl}`);
+            requestStatus.style.color = '#333';
+            requestStatus.innerHTML = `Kunne ikke sende – <a href="mailto:admin@jrgrafisk.dk?subject=Site%20request&body=${mailBody}" target="_blank">send email i stedet</a>`;
+            requestSiteButton.disabled = false;
+        }
+    });
+
     // Add save button handler
     saveButton.addEventListener('click', async () => {
         if (!hasChanges) return;

@@ -28,12 +28,6 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true; // Keep the message channel open for async response
     }
 
-    // Handle trackClick action
-    if (message.action === "trackClick") {
-        trackClick(message.data);
-        return true;
-    }
-
     // Handle shopsUpdated action
     if (message.action === 'shopsUpdated') {
         // Broadcast to all tabs

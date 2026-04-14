@@ -82,6 +82,27 @@
             background-color: #ccc;
             cursor: not-allowed;
         }
+        .request-button {
+            width: 100%;
+            padding: 8px;
+            background-color: #f5f5f5;
+            color: #333;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            margin-top: 5px;
+        }
+        .request-button:hover {
+            background-color: #e8e8e8;
+        }
+        .request-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        #requestStatus a {
+            color: #2196F3;
+        }
     </style>
 </head>
 <body>
@@ -91,6 +112,9 @@
         <!-- Shops will be inserted here by JavaScript -->
     </div>
     <button id="saveButton" class="save-button">Gem</button>
+    <hr style="margin: 12px 0; border: none; border-top: 1px solid #eee;">
+    <button id="requestSiteButton" class="request-button">Anmod om tilføjelse af dette site</button>
+    <div id="requestStatus" style="font-size:12px; margin-top:5px; text-align:center; color:#666;"></div>
     <script src="config.js"></script>
     <script src="popup.js"></script>
 </body>
