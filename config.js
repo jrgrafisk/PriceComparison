@@ -135,7 +135,7 @@ const SHOPS = [
 	    defaultCurrency: "DKK"
     },
 	{
-	        name: "AllTricks (beta)",
+	        name: "AllTricks",
         url: "https://www.alltricks.com/Buy/",
         priceSelector: ".price, .alltricks-Product-wrapPrice",
         gtinSelectors: [

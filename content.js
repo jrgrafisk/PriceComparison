@@ -171,25 +171,13 @@ function insertLoadingPlaceholder(shop, activeShops, onSkip) {
     widget.classList.add('price-comparison-table');
     widget.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:2147483647;font-family:Arial,sans-serif;';
 
+    // Hidden status container — still needed for onShopResult DOM updates
     const panel = document.createElement('div');
     panel.id = 'pp-shop-status';
-    panel.style.cssText = 'background:white;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,.15);padding:10px 14px;margin-bottom:8px;min-width:180px;';
-    const panelTitle = document.createElement('div');
-    panelTitle.style.cssText = 'font-size:11px;font-weight:700;color:#f2994b;margin-bottom:6px;';
-    panelTitle.textContent = 'Henter priser...';
-    panel.appendChild(panelTitle);
-
+    panel.style.display = 'none';
     (activeShops || []).forEach(s => {
         const row = document.createElement('div');
         row.dataset.domain = s.domain;
-        row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:2px 0;font-size:12px;color:#555;';
-        const spinner = document.createElement('span');
-        spinner.className = 'shop-spinner';
-        spinner.style.cssText = 'display:inline-block;width:10px;height:10px;border:2px solid #f2994b;border-top-color:transparent;border-radius:50%;animation:pp-spin 0.7s linear infinite;flex-shrink:0;';
-        const nameSpan = document.createElement('span');
-        nameSpan.textContent = s.name;
-        row.appendChild(spinner);
-        row.appendChild(nameSpan);
         panel.appendChild(row);
     });
 
@@ -1934,14 +1922,6 @@ function insertComparisonTable(shop, comparisonMessage, retryCount = 0, summary 
     hdr.appendChild(closeBtn);
     panel.appendChild(hdr);
 
-    // Savings bar
-    if (savings > 0) {
-        const savingsBar = document.createElement('div');
-        savingsBar.style.cssText = 'background:#e8f5e9;color:#2e7d32;padding:8px 16px;font-size:12px;font-weight:600;text-align:center;border-bottom:1px solid #c8e6c9;';
-        savingsBar.textContent = `💰 Du kan spare op til ${savings} kr. på dette produkt`;
-        panel.appendChild(savingsBar);
-    }
-
     // Panel body
     const body = document.createElement('div');
     body.className = 'pp-panel-content';
@@ -1954,7 +1934,7 @@ function insertComparisonTable(shop, comparisonMessage, retryCount = 0, summary 
     const btn = document.createElement('div');
     btn.style.cssText = 'background:#f2994b;color:white;border-radius:28px;padding:10px 18px;cursor:grab;box-shadow:0 4px 16px rgba(0,0,0,.2);font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;user-select:none;white-space:nowrap;';
     const btnIcon = document.createElement('span');
-    btnIcon.textContent = savings > 0 ? '💰' : '🔍';
+    btnIcon.textContent = '🔍';
     const btnLabel = document.createElement('span');
     btnLabel.textContent = summary || 'Vis prissammenligning';
     btn.appendChild(btnIcon);
