@@ -1,9 +1,23 @@
 const cheerio = require('cheerio');
+const fs = require('fs');
+const path = require('path');
 const { SHOPS, EXCHANGE_RATES } = require('../../config.js');
 
 // Track consecutive misses per shop for health monitoring
 const shopHealth = {};
-const HEALTH_WARNING_THRESHOLD = 5; // Log warning after 5 consecutive misses
+const HEALTH_WARNING_THRESHOLD = 5;
+const LOG_FILE = path.join(__dirname, '..', 'logs', 'health.log');
+
+function writeHealthLog(message) {
+    const line = `[${new Date().toISOString()}] ${message}\n`;
+    console.warn(message);
+    try {
+        fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true });
+        fs.appendFileSync(LOG_FILE, line);
+    } catch (e) {
+        // Don't crash the server if logging fails
+    }
+}
 
 function buildUrl(shop, gtin) {
     if (shop.url.includes('{gtin}')) {
@@ -153,7 +167,7 @@ async function fetchShopPrice(shop, gtin) {
             // Track miss
             shopHealth[shop.domain] = (shopHealth[shop.domain] || 0) + 1;
             if (shopHealth[shop.domain] === HEALTH_WARNING_THRESHOLD) {
-                console.warn(`[HEALTH] ${shop.name} has failed ${HEALTH_WARNING_THRESHOLD} times — may be blocked or selector broken`);
+                writeHealthLog(`[HEALTH] ${shop.name} has failed ${HEALTH_WARNING_THRESHOLD} times in a row — may be blocked or selector broken`);
             }
             return null;
         }
@@ -174,7 +188,7 @@ async function fetchShopPrice(shop, gtin) {
     } catch (e) {
         shopHealth[shop.domain] = (shopHealth[shop.domain] || 0) + 1;
         if (shopHealth[shop.domain] === HEALTH_WARNING_THRESHOLD) {
-            console.warn(`[HEALTH] ${shop.name} has errored ${HEALTH_WARNING_THRESHOLD} times — ${e.message}`);
+            writeHealthLog(`[HEALTH] ${shop.name} has errored ${HEALTH_WARNING_THRESHOLD} times in a row — ${e.message}`);
         }
         if (e.name !== 'AbortError' && e.name !== 'TimeoutError') {
             // Only log first error, not every retry
