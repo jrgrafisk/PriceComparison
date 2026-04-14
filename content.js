@@ -730,22 +730,29 @@ function findGTIN() {
     // Reset GTIN list before extracting new GTINs
     productInfo.gtin = [];
 
-    // 1. Try to find GTIN in a table cell labeled "EAN"
+    // 1. Try to find GTIN in a table cell OR paragraph labeled "EAN/GTIN"
     const eanRows = document.querySelectorAll('tr');
     for (const row of eanRows) {
         const cells = row.getElementsByTagName('td');
         if (cells.length >= 2 && /^(ean|gtin|gtins?)[\s:]*$/i.test(cells[0].textContent.trim())) {
             const gtin = cells[1].textContent.trim().replace(/[^0-9]/g, '');
             if (gtin.length >= 8 && gtin.length <= 14) {
-
-                productInfo.gtin.push({
-                    value: gtin,
-                    source: 'Table EAN cell',
-                    url: window.location.href
-                });
+                productInfo.gtin.push({ value: gtin, source: 'Table EAN cell', url: window.location.href });
                 cachedGTIN = gtin;
                 return gtin;
             }
+        }
+    }
+    // Also check <p>EAN:<span>VALUE</span></p> pattern (e.g. Børkop Cykler)
+    for (const p of document.querySelectorAll('p')) {
+        if (!/^(ean|gtin)[\s:]*/i.test(p.textContent.trim())) continue;
+        const span = p.querySelector('span');
+        if (!span) continue;
+        const gtin = span.textContent.trim().replace(/[^0-9]/g, '');
+        if (gtin.length >= 8 && gtin.length <= 14) {
+            productInfo.gtin.push({ value: gtin, source: 'Paragraph EAN span', url: window.location.href });
+            cachedGTIN = gtin;
+            return gtin;
         }
     }
 
