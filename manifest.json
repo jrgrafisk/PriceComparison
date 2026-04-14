@@ -21,7 +21,8 @@
 	"https://*.alltricks.com/*",
     "https://*.cykelshoppen.dk/*",
     "https://*.boerkopcykler.dk/*",
-    "https://*.hollandbikeshop.com/*"
+    "https://*.hollandbikeshop.com/*",
+    "https://*.pedalatleten.dk/*"
   ],
   "background": {
     "scripts": [

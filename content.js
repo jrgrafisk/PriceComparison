@@ -337,6 +337,18 @@ function displayPrice(responses, identifier, identifierType) {
             } else if (shop.dataProps) {
                 priceText = extractDataPropsPrice(response.html, shop);
                 if (!priceText) return null;
+            } else if (shop.shopifySearch) {
+                try {
+                    const json = JSON.parse(response.html);
+                    const products = json?.resources?.results?.products;
+                    if (!products || products.length === 0) return null;
+                    // Shopify returns price in cents (e.g. "39900" = 399.00 DKK)
+                    const cents = parseInt(products[0].price, 10);
+                    if (isNaN(cents) || cents <= 0) return null;
+                    priceText = String(cents / 100);
+                } catch (e) {
+                    return null;
+                }
             } else if (shop.scriptExtract) {
                 let searchHtml = response.html;
                 if (shop.scriptExtract.container) {

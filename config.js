@@ -160,6 +160,17 @@ const SHOPS = [
         defaultCurrency: "EUR"
     },
     {
+        name: "Pedalatleten",
+        url: "https://pedalatleten.dk/search/suggest.json?q=",
+        urlSuffix: "&resources[type]=product",
+        shopifySearch: true,
+        priceSelector: ".product-price-final .amount, .product-price-final",
+        gtinSelectors: ["div.product-sku"],
+        domain: "pedalatleten.dk",
+        tablePosition: ".product-price-final",
+        defaultCurrency: "DKK"
+    },
+    {
         name: "Holland Bike Shop",
         url: "https://hollandbikeshop.com/da-dk/advanced_search_result.php?keywords=",
         priceSelector: ".product-card__price",
