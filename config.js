@@ -46,7 +46,7 @@ const SHOPS = [
                 "props.results.data",
                 "props.items.data"
             ],
-            priceField: "price"
+            priceField: "formatted_price_float"
         }
     },
     {
