@@ -148,6 +148,7 @@ const EUR_TO_USD_RATE = 1.08;
 let gtinSearchAttempts = 0;
 const MAX_GTIN_SEARCH_ATTEMPTS = 2;
 let cachedGTIN = null;  // Add this at the top with other global variables
+let lastCartPayload = null;
 
 // Get current site information
 let { price: currentPrice, currency: currentCurrency } = getCurrentPriceAndCurrency();
@@ -401,6 +402,16 @@ function displayPrice(responses, identifier, identifierType) {
 
     // Update extension badge with cheaper alternatives count
     try { browser.runtime.sendMessage({ action: 'setBadge', count: cheaperCount }); } catch(e) {}
+
+    // Cache cart payload for cart button in widget
+    lastCartPayload = priceResults.length > 0 ? {
+        gtin: cachedGTIN,
+        name: findProductName(),
+        sourceDomain: window.location.hostname,
+        sourceUrl: window.location.href,
+        prices: priceResults.map(r => ({ shop: r.shop, dkkPrice: Math.round(Number(r.dkkPrice)), url: r.shopUrl })),
+        bestPrice: { shop: best.shop, dkkPrice: Math.round(Number(best.dkkPrice)), url: best.shopUrl }
+    } : null;
 
     // Ensure the shop object is passed correctly
     const shop = SHOPS.find(s => window.location.href.includes(s.domain));
@@ -1939,6 +1950,40 @@ function insertComparisonTable(shop, comparisonMessage, retryCount = 0, summary 
     Array.from(parsed.body.childNodes).forEach(node => body.appendChild(node));
     panel.appendChild(body);
 
+    // Cart button
+    if (lastCartPayload) {
+        const cartFooter = document.createElement('div');
+        cartFooter.style.cssText = 'padding:10px 16px 12px;border-top:1px solid #f0f0f0;';
+        const cartBtn = document.createElement('button');
+        cartBtn.style.cssText = 'width:100%;padding:8px 12px;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;';
+        const itemId = lastCartPayload.gtin || (lastCartPayload.name + '|' + lastCartPayload.sourceDomain);
+
+        isInCart(itemId).then(inCart => {
+            cartBtn.textContent = inCart ? '✓ I kurven' : '➕ Tilføj til kurv';
+            cartBtn.style.background = inCart ? '#e8f5e9' : '#fff3e0';
+            cartBtn.style.color = inCart ? '#2e7d32' : '#e65100';
+            cartBtn._ppInCart = inCart;
+        });
+
+        cartBtn.addEventListener('click', async () => {
+            if (cartBtn._ppInCart) {
+                await removeFromCart(itemId);
+                cartBtn.textContent = '➕ Tilføj til kurv';
+                cartBtn.style.background = '#fff3e0';
+                cartBtn.style.color = '#e65100';
+                cartBtn._ppInCart = false;
+            } else {
+                await addToCart(lastCartPayload);
+                cartBtn.textContent = '✓ I kurven';
+                cartBtn.style.background = '#e8f5e9';
+                cartBtn.style.color = '#2e7d32';
+                cartBtn._ppInCart = true;
+            }
+        });
+        cartFooter.appendChild(cartBtn);
+        panel.appendChild(cartFooter);
+    }
+
     // Trigger button
     const btn = document.createElement('div');
     btn.style.cssText = 'background:#f2994b;color:white;border-radius:28px;padding:10px 18px;cursor:grab;box-shadow:0 4px 16px rgba(0,0,0,.2);font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;user-select:none;white-space:nowrap;';
@@ -2093,6 +2138,7 @@ function handleNavigation() {
 
     gtinSearchAttempts = 0;
     cachedGTIN = null;
+    lastCartPayload = null;
     processedGTINs.clear();
     findAndComparePrice();
     addDkkPriceDisplay();
@@ -2232,5 +2278,28 @@ function initializeToggleFunctionality() {
     });
 
     toggleButton.setAttribute('data-listener-attached', 'true');
+}
+
+async function addToCart(payload) {
+    const data = await browser.storage.local.get('cart');
+    const cart = data.cart || [];
+    const id = payload.gtin || (payload.name + '|' + payload.sourceDomain);
+    const filtered = cart.filter(item => item.id !== id);
+    await browser.storage.local.set({ cart: [...filtered, {
+        id, gtin: payload.gtin, name: payload.name,
+        addedAt: new Date().toISOString(),
+        sourceDomain: payload.sourceDomain, sourceUrl: payload.sourceUrl,
+        prices: payload.prices, bestPrice: payload.bestPrice
+    }] });
+}
+
+async function removeFromCart(id) {
+    const data = await browser.storage.local.get('cart');
+    await browser.storage.local.set({ cart: (data.cart || []).filter(i => i.id !== id) });
+}
+
+async function isInCart(id) {
+    const data = await browser.storage.local.get('cart');
+    return (data.cart || []).some(item => item.id === id);
 }
 

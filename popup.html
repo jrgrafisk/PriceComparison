@@ -103,18 +103,49 @@
         #requestStatus a {
             color: #2196F3;
         }
+        .pp-tabs { display:flex; border-bottom:2px solid #eee; margin-bottom:10px; }
+        .pp-tab { flex:1; padding:8px 0; background:none; border:none; cursor:pointer; font-size:13px; font-weight:600; color:#999; border-bottom:2px solid transparent; margin-bottom:-2px; }
+        .pp-tab.active { color:#f2994b; border-bottom-color:#f2994b; }
+        .cart-item { display:flex; align-items:flex-start; padding:8px 0; border-bottom:1px solid #eee; gap:8px; }
+        .cart-item:last-child { border-bottom:none; }
+        .cart-item-info { flex-grow:1; min-width:0; }
+        .cart-item-name { font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .cart-item-price { font-size:12px; color:#f2994b; margin-top:2px; }
+        .cart-item-link { font-size:11px; color:#2196F3; text-decoration:none; }
+        .cart-remove { background:none; border:none; cursor:pointer; color:#bbb; font-size:16px; padding:0 2px; flex-shrink:0; }
+        .cart-remove:hover { color:#e53935; }
+        .cart-total { font-weight:700; font-size:14px; padding:8px 0 4px; text-align:right; }
+        .cart-note { font-size:10px; color:#aaa; text-align:right; margin-bottom:8px; }
+        .cart-empty { color:#bbb; font-size:13px; text-align:center; padding:20px 0; }
+        .premium-teaser { margin-top:10px; padding:10px 12px; background:#f9f9f9; border:1px solid #e0e0e0; border-radius:6px; opacity:.7; }
+        .premium-teaser-title { font-size:12px; font-weight:700; color:#555; }
+        .premium-teaser p { font-size:11px; color:#888; margin:4px 0 0; }
     </style>
 </head>
 <body>
-    <h2>Vælg shops du vil sammenligne priser fra
-    </h2>
-    <div class="shop-list" id="shopList">
-        <!-- Shops will be inserted here by JavaScript -->
+    <div class="pp-tabs">
+        <button class="pp-tab active" data-tab="shops">Butikker</button>
+        <button class="pp-tab" data-tab="cart" id="tabCart">Kurv</button>
     </div>
-    <button id="saveButton" class="save-button">Gem</button>
-    <hr style="margin: 12px 0; border: none; border-top: 1px solid #eee;">
-    <button id="requestSiteButton" class="request-button">Anmod om tilføjelse af dette site</button>
-    <div id="requestStatus" style="font-size:12px; margin-top:5px; text-align:center; color:#666;"></div>
+
+    <div id="panelShops">
+        <div class="shop-list" id="shopList"></div>
+        <button id="saveButton" class="save-button">Gem</button>
+        <hr style="margin:12px 0;border:none;border-top:1px solid #eee;">
+        <button id="requestSiteButton" class="request-button">Anmod om tilføjelse af dette site</button>
+        <div id="requestStatus" style="font-size:12px;margin-top:5px;text-align:center;color:#666;"></div>
+    </div>
+
+    <div id="panelCart" style="display:none;">
+        <div id="cartItems"></div>
+        <div id="cartTotal" class="cart-total" style="display:none;"></div>
+        <div class="cart-note">Priser ekskl. fragt</div>
+        <div class="premium-teaser">
+            <div class="premium-teaser-title">🔒 Premium: Optimer indkøb på tværs af shops</div>
+            <p>Sammensæt din ordre for laveste samlede pris inkl. fragt. Kommer snart.</p>
+        </div>
+    </div>
+
     <script src="config.js"></script>
     <script src="popup.js"></script>
 </body>
