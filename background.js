@@ -22,7 +22,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 sendResponse({ html, url: message.url });
             })
             .catch(error => {
-                console.error('Error fetching URL:', error);
+
                 sendResponse({ html: null, url: message.url });
             });
         return true; // Keep the message channel open for async response
@@ -54,5 +54,5 @@ browser.storage.sync.get("enabledShops").then(data => {
         });
         browser.storage.sync.set({ enabledShops: defaultEnabledShops });
     }
-    console.log("Enabled shops:", data.enabledShops);
+
 });
