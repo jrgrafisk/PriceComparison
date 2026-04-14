@@ -1964,6 +1964,12 @@ function insertComparisonTable(shop, comparisonMessage, retryCount = 0, summary 
     hdr.style.cssText = 'background:#f2994b;color:white;padding:12px 16px;font-weight:700;font-size:14px;display:flex;justify-content:space-between;align-items:center;';
     const hdrTitle = document.createElement('span');
     hdrTitle.textContent = 'Prissammenligning';
+    const hdrRight = document.createElement('div');
+    hdrRight.style.cssText = 'display:flex;align-items:center;gap:10px;';
+    const cartIconBtn = document.createElement('button');
+    cartIconBtn.textContent = '🛒';
+    cartIconBtn.title = 'Kurv';
+    cartIconBtn.style.cssText = 'background:none;border:none;color:white;cursor:pointer;font-size:15px;padding:0;line-height:1;opacity:.85;';
     const closeBtn = document.createElement('button');
     closeBtn.textContent = '✕';
     closeBtn.style.cssText = 'background:none;border:none;color:white;cursor:pointer;font-size:16px;padding:0;line-height:1;opacity:.85;';
@@ -1972,8 +1978,10 @@ function insertComparisonTable(shop, comparisonMessage, retryCount = 0, summary 
         panel.style.display = 'none';
         sessionStorage.setItem('pp-open', 'false');
     });
+    hdrRight.appendChild(cartIconBtn);
+    hdrRight.appendChild(closeBtn);
     hdr.appendChild(hdrTitle);
-    hdr.appendChild(closeBtn);
+    hdr.appendChild(hdrRight);
     panel.appendChild(hdr);
 
     // Panel body
@@ -1983,6 +1991,86 @@ function insertComparisonTable(shop, comparisonMessage, retryCount = 0, summary 
     const parsed = new DOMParser().parseFromString(comparisonMessage, 'text/html');
     Array.from(parsed.body.childNodes).forEach(node => body.appendChild(node));
     panel.appendChild(body);
+
+    // Cart panel (hidden until cart icon clicked)
+    const widgetCartPanel = document.createElement('div');
+    widgetCartPanel.style.cssText = 'overflow-y:auto;max-height:60vh;padding:12px 16px;display:none;';
+
+    async function renderWidgetCart() {
+        widgetCartPanel.textContent = '';
+        const data = await browser.storage.local.get('cart');
+        const cart = data.cart || [];
+        if (cart.length === 0) {
+            const empty = document.createElement('div');
+            empty.style.cssText = 'color:#bbb;font-size:13px;text-align:center;padding:20px 0;';
+            empty.textContent = 'Din kurv er tom. Tilføj produkter via prissammenligningen.';
+            widgetCartPanel.appendChild(empty);
+            return;
+        }
+        cart.forEach(item => {
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;align-items:flex-start;padding:8px 0;border-bottom:1px solid #f0f0f0;gap:8px;';
+            const info = document.createElement('div');
+            info.style.cssText = 'flex-grow:1;min-width:0;';
+            const name = document.createElement('div');
+            name.style.cssText = 'font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+            name.textContent = item.name || 'Ukendt produkt';
+            name.title = item.name || '';
+            const price = document.createElement('div');
+            price.style.cssText = 'font-size:12px;color:#f2994b;margin-top:2px;';
+            price.textContent = item.bestPrice ? `${item.bestPrice.dkkPrice} kr. (${item.bestPrice.shop})` : 'Pris ukendt';
+            const link = document.createElement('a');
+            link.href = item.bestPrice?.url || item.sourceUrl || '#';
+            link.target = '_blank';
+            link.style.cssText = 'font-size:11px;color:#2196F3;text-decoration:none;display:block;margin-top:2px;';
+            link.textContent = 'Se hos forhandler';
+            info.appendChild(name);
+            info.appendChild(price);
+            info.appendChild(link);
+            const removeBtn = document.createElement('button');
+            removeBtn.textContent = '✕';
+            removeBtn.style.cssText = 'background:none;border:none;cursor:pointer;color:#bbb;font-size:14px;padding:0;flex-shrink:0;';
+            removeBtn.addEventListener('click', async () => {
+                const d = await browser.storage.local.get('cart');
+                await browser.storage.local.set({ cart: (d.cart || []).filter(i => i.id !== item.id) });
+                renderWidgetCart();
+            });
+            row.appendChild(info);
+            row.appendChild(removeBtn);
+            widgetCartPanel.appendChild(row);
+        });
+        const total = cart.reduce((sum, i) => sum + (i.bestPrice?.dkkPrice || 0), 0);
+        const totalEl = document.createElement('div');
+        totalEl.style.cssText = 'font-weight:700;font-size:14px;padding:8px 0 2px;text-align:right;';
+        totalEl.textContent = `Total: ${total} kr.`;
+        const noteEl = document.createElement('div');
+        noteEl.style.cssText = 'font-size:10px;color:#aaa;text-align:right;';
+        noteEl.textContent = 'Priser ekskl. fragt';
+        widgetCartPanel.appendChild(totalEl);
+        widgetCartPanel.appendChild(noteEl);
+    }
+
+    cartIconBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const inCart = widgetCartPanel.style.display !== 'none';
+        if (inCart) {
+            widgetCartPanel.style.display = 'none';
+            body.style.display = 'block';
+            hdrTitle.textContent = 'Prissammenligning';
+            cartIconBtn.textContent = '🛒';
+            cartIconBtn.title = 'Kurv';
+        } else {
+            body.style.display = 'none';
+            widgetCartPanel.style.display = 'block';
+            hdrTitle.textContent = 'Kurv';
+            cartIconBtn.textContent = '← Priser';
+            cartIconBtn.title = 'Tilbage til priser';
+            cartIconBtn.style.fontSize = '12px';
+            await renderWidgetCart();
+        }
+    });
+
+    panel.appendChild(widgetCartPanel);
 
     // Cart button
     if (lastCartPayload) {
