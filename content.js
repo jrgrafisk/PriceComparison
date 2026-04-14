@@ -2052,6 +2052,14 @@ function insertComparisonTable(shop, comparisonMessage, retryCount = 0, summary 
                 caveat.textContent = `${best[1].count} af ${n} produkter tilgængeligt`;
                 rec.appendChild(caveat);
             }
+            const openBtn = document.createElement('button');
+            openBtn.textContent = `Åbn alle hos ${best[0]} →`;
+            openBtn.style.cssText = 'width:100%;margin-top:8px;padding:6px 10px;border:none;border-radius:5px;background:#f2994b;color:#fff;font-size:12px;font-weight:600;cursor:pointer;';
+            openBtn.addEventListener('click', () => {
+                const urls = cart.map(item => (item.prices || []).find(p => p.shop === best[0])?.url).filter(Boolean);
+                browser.runtime.sendMessage({ action: 'openTabs', urls });
+            });
+            rec.appendChild(openBtn);
             widgetCartPanel.appendChild(rec);
         }
 

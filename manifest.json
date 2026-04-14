@@ -5,6 +5,7 @@
   "description": "Compare bike part prices across multiple stores.",
   "permissions": [
     "activeTab",
+    "tabs",
     "storage",
     "https://*.cykelgear.dk/*",
     "https://*.bike24.com/*",

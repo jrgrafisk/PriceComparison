@@ -73,6 +73,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                 caveat.textContent = `${best[1].count} af ${n} produkter tilgængeligt`;
                 rec.appendChild(caveat);
             }
+            const openBtn = document.createElement('button');
+            openBtn.textContent = `Åbn alle hos ${best[0]} →`;
+            openBtn.style.cssText = 'width:100%;margin-top:8px;padding:6px 10px;border:none;border-radius:5px;background:#f2994b;color:#fff;font-size:12px;font-weight:600;cursor:pointer;';
+            openBtn.addEventListener('click', async () => {
+                const urls = cart.map(item => (item.prices || []).find(p => p.shop === best[0])?.url).filter(Boolean);
+                for (let i = 0; i < urls.length; i++) {
+                    await browser.tabs.create({ url: urls[i], active: i === urls.length - 1 });
+                }
+                window.close();
+            });
+            rec.appendChild(openBtn);
             cartItemsEl.appendChild(rec);
         }
 
