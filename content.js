@@ -361,6 +361,15 @@ function displayPrice(responses, identifier, identifierType) {
 
 /*             if (!validation.isValid) return null; */
 
+            // Validation: reject if price is >60% lower than current page price (likely wrong match)
+            const priceInDkk = currency === 'DKK' ? price : price * EXCHANGE_RATES.EUR_TO_DKK;
+            const currentPageDkk = currentPriceInfo.currency === 'DKK'
+                ? currentPriceInfo.price
+                : currentPriceInfo.price * EXCHANGE_RATES.EUR_TO_DKK;
+            if (currentPageDkk && priceInDkk < currentPageDkk * 0.40) {
+                return null; // >60% discount = likely wrong match
+            }
+
             return {
                 shop: shop.name,
                 price: priceText,
