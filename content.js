@@ -359,7 +359,8 @@ function displayPrice(responses, identifier, identifierType) {
                     if (!priceText) return null;
                 }
             }
-            const { price, currency } = extractPriceAndCurrency(priceText);
+            const { price, currency: detectedCurrency } = extractPriceAndCurrency(priceText);
+            const currency = detectedCurrency || shop.defaultCurrency || 'EUR';
             if (!price) return null;
 
 /*             const validation = validatePrice(
@@ -1683,8 +1684,7 @@ function generateComparisonTable(priceResults, identifierType, gtin = null) {
         return `
         <tr style="${rowStyle}" class="shop-row ${isHidden ? 'hidden-shop' : ''}">
             <td style="padding: 5px;">${result.shop}</td>
-            <td style="padding: 5px;">${Number(result.eurPrice).toFixed(2)}${mpnIndicator}</td>
-            <td style="padding: 5px;">${Number(result.dkkPrice).toFixed(2)}${mpnIndicator}</td>
+            <td style="padding: 5px;">${Math.round(Number(result.dkkPrice))} kr.${mpnIndicator}</td>
             <td style="padding: 5px;">
                 ${result.price ? `<a href="${addUTMParameters(result.shopUrl)}"
                     class="track-click"
@@ -1692,11 +1692,11 @@ function generateComparisonTable(priceResults, identifierType, gtin = null) {
                     data-url="${result.shopUrl}"
                     data-name="${productName?.replace(/"/g, '&quot;')}"
                     data-price="${result.price}"
-                    data-price-amount="${result.eurPrice || ''}"
-                    data-price-currency="EUR"
+                    data-price-amount="${result.dkkPrice || ''}"
+                    data-price-currency="DKK"
                     data-gtin="${cachedGTIN}"
                     data-referrer="${window.location.hostname}"
-                    target="_blank">${window.location.hostname.includes('bike-components') || window.location.hostname.includes('r2-bike') || window.location.hostname.includes('bike-discount') ? 'Vis' : 'Se produkt'}</a>` : "-"}
+                    target="_blank">Se produkt</a>` : "-"}
             </td>
         </tr>`;
     };
@@ -1708,7 +1708,7 @@ function generateComparisonTable(priceResults, identifierType, gtin = null) {
     // Build the toggle button HTML if there are any hidden rows
     const toggleButtonHtml = hiddenRows.length > 0 ? `
         <tr id="toggleRow">
-            <td colspan="4" style="text-align: center; padding: 8px;">
+            <td colspan="3" style="text-align: center; padding: 8px;">
                 <a href="#" id="toggleShops" style="color: #f2994b; text-decoration: none; display: flex; align-items: center; justify-content: center;">
                     Vis alle shops (${hiddenRows.length} mere) ▼
                 </a>
@@ -1753,18 +1753,16 @@ function generateComparisonTable(priceResults, identifierType, gtin = null) {
         <table class="pp-table">
             <tr>
                 <th style="padding: 5px; font-size: 10px;">Forhandler</th>
-                <th style="padding: 5px; font-size: 10px;">Pris i EUR</th>
-                <th style="padding: 5px; font-size: 10px;">Pris i DKK</th>
+                <th style="padding: 5px; font-size: 10px;">Pris (DKK)</th>
                 <th style="padding: 5px; font-size: 10px;">Link</th>
             </tr>
             ${visibleRows.join('')}
             ${hiddenRows.join('')}
             ${toggleButtonHtml}
         </table>
-        <div class="md:mr-1" style="margin-top: 10px; font-size: 8px !important; color: #666;">
-            <p style="font-size: 10px;">Dette er kun en vejledning. Fast valutakurs på EUR: ${EUR_TO_DKK_RATE}.</p>
+        <div style="margin-top:8px;font-size:10px;color:#888;">
             ${disclaimerText}
-            <p style="font-size: 10px;"><strong>OBS:</strong> Sørg for at vælge Denmark øverst på Bike Discount for at få den korrekte pris.</p>
+            <p style="margin:2px 0;">EUR-priser er omregnet med fast kurs ${EUR_TO_DKK_RATE} kr./€ og kan variere.</p>
         </div>
     `;
 
