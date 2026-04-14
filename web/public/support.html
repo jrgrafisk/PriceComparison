@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Support & Privatlivspolitik – PedalPricer</title>
+    <meta name="description" content="Support og privatlivspolitik for PedalPricer browser-udvidelsen.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/styles.css">
+    <link rel="icon" type="image/png" href="/icons/48x48pp.png">
+    <style>
+        .content-wrap {
+            max-width: 740px;
+            margin: 0 auto;
+            padding: 60px 24px 80px;
+        }
+        .content-wrap h1 {
+            font-size: 32px;
+            font-weight: 800;
+            margin-bottom: 8px;
+            letter-spacing: -0.02em;
+        }
+        .content-wrap .subtitle {
+            color: var(--text-light);
+            font-size: 15px;
+            margin-bottom: 48px;
+        }
+        .section {
+            margin-bottom: 48px;
+        }
+        .section h2 {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border);
+        }
+        .section h3 {
+            font-size: 16px;
+            font-weight: 600;
+            margin: 20px 0 8px;
+        }
+        .section p, .section li {
+            font-size: 15px;
+            color: var(--text-light);
+            line-height: 1.75;
+            margin-bottom: 8px;
+        }
+        .section ul {
+            padding-left: 20px;
+        }
+        .section li {
+            margin-bottom: 4px;
+        }
+        .highlight-box {
+            background: #f0fdf4;
+            border: 1px solid #86efac;
+            border-radius: var(--radius);
+            padding: 16px 20px;
+            margin-bottom: 20px;
+            font-size: 15px;
+            color: #166534;
+            line-height: 1.6;
+        }
+        .perm-row {
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 14px;
+        }
+        .perm-row:last-child { border-bottom: none; }
+        .perm-name {
+            font-weight: 600;
+            color: var(--text);
+            min-width: 140px;
+            flex-shrink: 0;
+        }
+        .perm-desc { color: var(--text-light); line-height: 1.6; }
+        .contact-box {
+            background: var(--bg-alt);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px 24px;
+            font-size: 15px;
+        }
+        .contact-box a { color: var(--orange); font-weight: 600; }
+        .updated {
+            font-size: 13px;
+            color: var(--text-light);
+            margin-top: 40px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border);
+        }
+    </style>
+</head>
+<body>
+
+<nav>
+    <div class="nav-inner">
+        <a class="logo" href="/">
+            <img src="/icons/48x48pp.png" alt="PedalPricer logo">
+            PedalPricer
+        </a>
+        <a class="btn btn-primary"
+           href="https://addons.mozilla.org/en-US/firefox/addon/pedalpricer/"
+           target="_blank" rel="noopener">
+            Tilføj til Firefox
+        </a>
+    </div>
+</nav>
+
+<div class="content-wrap">
+
+    <h1>Support &amp; Privatlivspolitik</h1>
+    <p class="subtitle">For PedalPricer browser-udvidelsen · v1.8.0</p>
+
+    <!-- PRIVACY -->
+    <div class="section">
+        <h2>Privatlivspolitik</h2>
+
+        <div class="highlight-box">
+            ✓ PedalPricer indsamler, gemmer eller sender ingen personlige oplysninger. Udvidelsen fungerer udelukkende lokalt i din browser.
+        </div>
+
+        <h3>Hvad gør udvidelsen?</h3>
+        <p>PedalPricer søger automatisk i en række cykelbutikker, når du besøger en produktside på en af de understøttede sider. Udvidelsen finder produktets EAN/GTIN-stregkode og henter priser fra de øvrige butikker via en baggrundsforespørgsel.</p>
+
+        <h3>Hvilke data behandles?</h3>
+        <ul>
+            <li>EAN/GTIN-stregkoder der findes på produktsider — disse bruges udelukkende til at søge i butikker og gemmes ikke.</li>
+            <li>URL'en på den side du besøger — bruges til at afgøre, om udvidelsen skal aktiveres. Sendes ikke til nogen server.</li>
+            <li>Dine indstillinger (hvilke butikker der er slået til/fra) — gemmes lokalt i browserens sync-storage og deles ikke.</li>
+        </ul>
+
+        <h3>Deles data med tredjeparter?</h3>
+        <p>Nej. Udvidelsen foretager fetch-kald direkte til butikkernes søgesider (de samme kald din browser ville lave, hvis du selv søgte). Der sendes ingen data til PedalPricers egne servere.</p>
+        <p>Når du klikker på knappen "Anmod om tilføjelse af dette site" i popup-menuen, sendes sidens URL til <strong>jrgrafisk.dk</strong> for at registrere anmodningen. Dette sker kun, hvis du aktivt klikker knappen.</p>
+
+        <h3>Tilladelser</h3>
+        <div>
+            <div class="perm-row">
+                <span class="perm-name">activeTab</span>
+                <span class="perm-desc">Giver adgang til den aktive fane for at læse produktinformation og vise sammenligningsresultater.</span>
+            </div>
+            <div class="perm-row">
+                <span class="perm-name">storage</span>
+                <span class="perm-desc">Gemmer dine indstillinger (aktiverede butikker) lokalt i browseren.</span>
+            </div>
+            <div class="perm-row">
+                <span class="perm-name">Hjemmesideadgang</span>
+                <span class="perm-desc">Adgang til de understøttede cykelbutikkers domæner, så udvidelsen kan hente priser i baggrunden. Udvidelsen læser aldrig indhold på andre sider.</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- SUPPORT / FAQ -->
+    <div class="section">
+        <h2>Support &amp; FAQ</h2>
+
+        <h3>Hvilke butikker er understøttet?</h3>
+        <ul>
+            <li>Cykelgear</li>
+            <li>Cykelshoppen</li>
+            <li>Cykelpartner</li>
+            <li>Cykelexperten</li>
+            <li>AllBike</li>
+            <li>Fri Bike Shop</li>
+            <li>Børkop Cykler</li>
+            <li>Bike Discount</li>
+            <li>Bike Components</li>
+            <li>Bike24</li>
+            <li>R2 Bike</li>
+            <li>AllTricks</li>
+        </ul>
+
+        <h3>Udvidelsen viser ingen priser — hvad gør jeg?</h3>
+        <p>Udvidelsen aktiveres kun på produktsider hos de understøttede butikker. Hvis du er på en produktside og intet sker, kan det skyldes:</p>
+        <ul>
+            <li>Produktet har ingen EAN/GTIN-stregkode på siden.</li>
+            <li>Siden bruger en struktur der endnu ikke er understøttet.</li>
+        </ul>
+        <p>Prøv at genindlæse siden. Hvis det fortsat ikke virker, er du velkommen til at kontakte os.</p>
+
+        <h3>Jeg vil gerne have en ny butik tilføjet</h3>
+        <p>Klik på PedalPricer-ikonet i din browser og brug knappen <strong>"Anmod om tilføjelse af dette site"</strong> — så registreres adressen og vi kigger på det hurtigst muligt.</p>
+
+        <h3>Kan jeg slå bestemte butikker fra?</h3>
+        <p>Ja. Klik på PedalPricer-ikonet og brug til/fra-knapperne til at vælge præcis hvilke butikker du vil sammenligne med. Tryk "Gem" for at gemme dine indstillinger.</p>
+
+        <h3>Fungerer udvidelsen i Chrome?</h3>
+        <p>En Chrome-version er under udvikling. Følg med på <a href="/" style="color:var(--orange);font-weight:600;">pedalpricer.cc</a> for opdateringer.</p>
+
+        <h3>Prøv webværktøjet</h3>
+        <p>Du kan også sammenligne priser direkte på <a href="/#tool" style="color:var(--orange);font-weight:600;">pedalpricer.cc</a> ved at indsætte en produkt-URL eller EAN-stregkode — ingen installation nødvendig.</p>
+    </div>
+
+    <!-- CONTACT -->
+    <div class="section">
+        <h2>Kontakt</h2>
+        <div class="contact-box">
+            Har du spørgsmål, fejlrapporter eller ønsker du en ny butik tilføjet?<br><br>
+            Skriv til <a href="mailto:admin@jrgrafisk.dk">admin@jrgrafisk.dk</a> eller brug knappen i udvidelsens popup.
+        </div>
+    </div>
+
+    <p class="updated">Sidst opdateret: April 2026</p>
+
+</div>
+
+<footer>
+    <p>© 2026 PedalPricer · <a href="https://addons.mozilla.org/en-US/firefox/addon/pedalpricer/" target="_blank" rel="noopener" style="color:var(--orange);">Firefox Add-on</a> · <a href="/support" style="color:var(--orange);">Support & Privatliv</a></p>
+</footer>
+
+</body>
+</html>
