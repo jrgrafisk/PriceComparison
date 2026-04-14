@@ -69,6 +69,31 @@ function parseCSSPrice(html, shop) {
     return null;
 }
 
+function parseDataPropsPrice(html, shop) {
+    const $ = cheerio.load(html);
+    const { selector, attribute, productPaths, priceField } = shop.dataProps;
+    const raw = $(selector).first().attr(attribute);
+    if (!raw) return null;
+
+    let data;
+    try { data = JSON.parse(raw); } catch (e) { return null; }
+
+    for (const path of productPaths) {
+        const products = path.split('.').reduce((obj, key) => obj?.[key], data);
+        if (Array.isArray(products) && products.length > 0) {
+            const price = parseFloat(products[0][priceField]);
+            if (!isNaN(price) && price > 0) {
+                const currency = shop.defaultCurrency;
+                const priceText = currency === 'DKK'
+                    ? `${price.toFixed(2).replace('.', ',')} kr.`
+                    : `${price.toFixed(2)} €`;
+                return { priceText, price, currency };
+            }
+        }
+    }
+    return null;
+}
+
 function parseInertiaPrice(html, shop) {
     const $ = cheerio.load(html);
     const dataPage = $('[data-page]').attr('data-page');
@@ -111,10 +136,12 @@ async function fetchShopPrice(shop, gtin) {
 
         let priceData = shop.inertia
             ? parseInertiaPrice(html, shop)
+            : shop.dataProps
+            ? parseDataPropsPrice(html, shop)
             : parseCSSPrice(html, shop);
 
-        // Fallback to JSON-LD for shops without Inertia when CSS finds nothing
-        if (!priceData && !shop.inertia) {
+        // Fallback to JSON-LD when no structured data config and CSS finds nothing
+        if (!priceData && !shop.inertia && !shop.dataProps) {
             priceData = parseJSONLDPrice(html, gtin, shop);
         }
 

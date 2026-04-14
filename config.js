@@ -36,7 +36,13 @@ const SHOPS = [
     {
         name: "Bike Components",
         url: "https://www.bike-components.de/en/s/?keywords=",
-        priceSelector: ".price.site-price, .price.block.pt-6[data-test='auto-product-price']",        
+        priceSelector: ".price.site-price, .price.block.pt-6[data-test='auto-product-price']",
+        dataProps: {
+            selector: '[data-component="ProductCatalog"]',
+            attribute: "data-props",
+            productPaths: ["initialData.products"],
+            priceField: "priceRaw"
+        },
         gtinSelectors: [
             {
                 type: "application/ld+json",
