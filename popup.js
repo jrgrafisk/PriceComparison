@@ -16,17 +16,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         const shopItem = document.createElement('div');
         shopItem.className = 'shop-item';
-        
-        shopItem.innerHTML = `
-            <label class="toggle-switch">
-                <input type="checkbox" data-domain="${shop.domain}" ${isEnabled ? 'checked' : ''}>
-                <span class="slider"></span>
-            </label>
-            <span class="shop-name">${shop.name}</span>
-        `;
-        
+
+        const label = document.createElement('label');
+        label.className = 'toggle-switch';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.dataset.domain = shop.domain;
+        checkbox.checked = isEnabled;
+        const slider = document.createElement('span');
+        slider.className = 'slider';
+        label.appendChild(checkbox);
+        label.appendChild(slider);
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'shop-name';
+        nameSpan.textContent = shop.name;
+
+        shopItem.appendChild(label);
+        shopItem.appendChild(nameSpan);
+
         // Add change listener to checkbox
-        const checkbox = shopItem.querySelector('input');
         checkbox.addEventListener('change', (e) => {
             const domain = e.target.dataset.domain;
             const isChecked = e.target.checked;
@@ -89,7 +98,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (e) {
             const mailBody = encodeURIComponent(`Hej,\n\nJeg ønsker, at følgende site tilføjes til PedalPricer:\n${siteUrl}`);
             requestStatus.style.color = '#333';
-            requestStatus.innerHTML = `Kunne ikke sende – <a href="mailto:admin@jrgrafisk.dk?subject=Site%20request&body=${mailBody}" target="_blank">send email i stedet</a>`;
+            requestStatus.textContent = 'Kunne ikke sende – ';
+            const mailLink = document.createElement('a');
+            mailLink.href = 'mailto:admin@jrgrafisk.dk?subject=Site%20request&body=' + mailBody;
+            mailLink.target = '_blank';
+            mailLink.textContent = 'send email i stedet';
+            requestStatus.appendChild(mailLink);
             requestSiteButton.disabled = false;
         }
     });

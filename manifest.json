@@ -43,7 +43,11 @@
   "browser_specific_settings": {
     "gecko": {
       "id": "firefoxextension@jrgrafisk.dk",
-      "strict_min_version": "134.0"
+      "strict_min_version": "134.0",
+      "data_collection_permissions": {
+        "required": [],
+        "optional": []
+      }
     }
   },
   "browser_action": {

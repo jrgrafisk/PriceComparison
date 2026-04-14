@@ -163,27 +163,53 @@ const convertDkkToEur = (priceInDkk) => priceInDkk / EUR_TO_DKK_RATE;
 function insertLoadingPlaceholder(shop, activeShops, onSkip) {
     if (document.querySelector('.price-comparison-table')) return;
 
-    const rows = (activeShops || []).map(s => `
-        <div data-domain="${s.domain}" style="display:flex;align-items:center;gap:6px;padding:2px 0;font-size:12px;color:#555;">
-            <span class="shop-spinner" style="display:inline-block;width:10px;height:10px;border:2px solid #f2994b;border-top-color:transparent;border-radius:50%;animation:pp-spin 0.7s linear infinite;flex-shrink:0;"></span>
-            <span>${s.name}</span>
-        </div>
-    `).join('');
-
     const el = document.createElement('div');
     el.classList.add('price-comparison-table', 'price-comparison-loading');
-    el.innerHTML = `
-        <div style="padding:10px;font-family:Arial,sans-serif;border:1px solid #f2994b;">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                <span style="font-size:12px;font-weight:700;color:#f2994b;">Henter priser...</span>
-                <button id="pp-skip-btn" style="font-size:11px;color:#999;background:none;border:none;cursor:pointer;padding:0;text-decoration:underline;">Spring over</button>
-            </div>
-            <div id="pp-shop-status">${rows}</div>
-        </div>
-        <style>@keyframes pp-spin{to{transform:rotate(360deg)}}</style>
-    `;
     el.style.cssText = 'margin-top:10px;';
-    el.querySelector('#pp-skip-btn').addEventListener('click', () => onSkip?.());
+
+    // Outer wrapper
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'padding:10px;font-family:Arial,sans-serif;border:1px solid #f2994b;';
+
+    // Header row
+    const header = document.createElement('div');
+    header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;';
+    const title = document.createElement('span');
+    title.style.cssText = 'font-size:12px;font-weight:700;color:#f2994b;';
+    title.textContent = 'Henter priser...';
+    const skipBtn = document.createElement('button');
+    skipBtn.id = 'pp-skip-btn';
+    skipBtn.style.cssText = 'font-size:11px;color:#999;background:none;border:none;cursor:pointer;padding:0;text-decoration:underline;';
+    skipBtn.textContent = 'Spring over';
+    skipBtn.addEventListener('click', () => onSkip?.());
+    header.appendChild(title);
+    header.appendChild(skipBtn);
+
+    // Shop status rows
+    const statusContainer = document.createElement('div');
+    statusContainer.id = 'pp-shop-status';
+    (activeShops || []).forEach(s => {
+        const row = document.createElement('div');
+        row.dataset.domain = s.domain;
+        row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:2px 0;font-size:12px;color:#555;';
+        const spinner = document.createElement('span');
+        spinner.className = 'shop-spinner';
+        spinner.style.cssText = 'display:inline-block;width:10px;height:10px;border:2px solid #f2994b;border-top-color:transparent;border-radius:50%;animation:pp-spin 0.7s linear infinite;flex-shrink:0;';
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = s.name;
+        row.appendChild(spinner);
+        row.appendChild(nameSpan);
+        statusContainer.appendChild(row);
+    });
+
+    // Spin keyframes
+    const style = document.createElement('style');
+    style.textContent = '@keyframes pp-spin{to{transform:rotate(360deg)}}';
+
+    wrapper.appendChild(header);
+    wrapper.appendChild(statusContainer);
+    el.appendChild(wrapper);
+    el.appendChild(style);
 
     const anchor = document.querySelector(shop.tablePosition);
     if (anchor) {
@@ -1766,7 +1792,8 @@ function updateTableSafely(newHTML) {
     }
     const tableContainer = document.querySelector('.price-comparison-table');
     if (tableContainer) {
-        tableContainer.innerHTML = newHTML;
+        const fragment = document.createRange().createContextualFragment(newHTML);
+        tableContainer.replaceChildren(fragment);
     } else {
         insertComparisonTable(newHTML);
     }
@@ -1892,7 +1919,7 @@ function insertComparisonTable(shop, comparisonMessage, retryCount = 0) {
 
     const tableElement = document.createElement('div');
     tableElement.classList.add('price-comparison-table');
-    tableElement.innerHTML = comparisonMessage;
+    tableElement.appendChild(document.createRange().createContextualFragment(comparisonMessage));
     tableElement.style.marginTop = '10px';
     tableElement.style.padding = '10px';
     tableElement.style.border = '1px solid #ccc';
