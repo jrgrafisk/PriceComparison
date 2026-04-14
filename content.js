@@ -1693,23 +1693,17 @@ function generateComparisonTable(priceResults, identifierType, gtin = null) {
             <td style="padding: 5px;">${result.shop}</td>
             <td style="padding: 5px;">${Math.round(Number(result.dkkPrice))} kr.${mpnIndicator}</td>
             <td style="padding: 5px;">
-                ${result.price ? (() => {
-                    // Børkop search results can't provide direct product links (Clerk.io overlay)
-                    if (result.shop === 'Børkop Cykler' && result.shopUrl?.includes('?show_omnisearch')) {
-                        return '-';
-                    }
-                    return `<a href="${addUTMParameters(result.shopUrl)}"
-                        class="track-click"
-                        data-store="${result.shop}"
-                        data-url="${result.shopUrl}"
-                        data-name="${productName?.replace(/"/g, '&quot;')}"
-                        data-price="${result.price}"
-                        data-price-amount="${result.dkkPrice || ''}"
-                        data-price-currency="DKK"
-                        data-gtin="${cachedGTIN}"
-                        data-referrer="${window.location.hostname}"
-                        target="_blank">Se produkt</a>`;
-                })() : "-"}
+                ${result.price ? `<a href="${addUTMParameters(result.shopUrl)}"
+                    class="track-click"
+                    data-store="${result.shop}"
+                    data-url="${result.shopUrl}"
+                    data-name="${productName?.replace(/"/g, '&quot;')}"
+                    data-price="${result.price}"
+                    data-price-amount="${result.dkkPrice || ''}"
+                    data-price-currency="DKK"
+                    data-gtin="${cachedGTIN}"
+                    data-referrer="${window.location.hostname}"
+                    target="_blank">Se produkt</a>` : "-"}
             </td>
         </tr>`;
     };
