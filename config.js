@@ -164,7 +164,8 @@ const SHOPS = [
         url: "https://hollandbikeshop.com/da-dk/advanced_search_result.php?keywords=",
         priceSelector: ".product-card__price",
         scriptExtract: {
-            price: "product_obj\\.price\\s*=\\s*'([\\d.]+)'"
+            price: "product_obj\\.price\\s*=\\s*'([\\d.]+)'",
+            container: ".filter-products__row"
         },
         gtinSelectors: [
             {

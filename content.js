@@ -338,11 +338,20 @@ function displayPrice(responses, identifier, identifierType) {
                 priceText = extractDataPropsPrice(response.html, shop);
                 if (!priceText) return null;
             } else if (shop.scriptExtract) {
-                const priceMatch = response.html.match(new RegExp(shop.scriptExtract.price));
+                let searchHtml = response.html;
+                if (shop.scriptExtract.container) {
+                    const doc = new DOMParser().parseFromString(response.html, 'text/html');
+                    const container = doc.querySelector(shop.scriptExtract.container);
+                    if (container) {
+                        searchHtml = Array.from(container.querySelectorAll('script'))
+                            .map(s => s.textContent).join('\n');
+                    }
+                }
+                const priceMatch = searchHtml.match(new RegExp(shop.scriptExtract.price));
                 if (!priceMatch) return null;
                 let extracted = priceMatch[1];
                 if (shop.scriptExtract.currency) {
-                    const currMatch = response.html.match(new RegExp(shop.scriptExtract.currency));
+                    const currMatch = searchHtml.match(new RegExp(shop.scriptExtract.currency));
                     if (currMatch) extracted += ' ' + currMatch[1];
                 }
                 priceText = extracted;
