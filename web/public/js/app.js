@@ -15,6 +15,11 @@ form.addEventListener('submit', async (e) => {
     await runSearch(val);
 });
 
+document.getElementById('exampleBtn').addEventListener('click', async () => {
+    input.value = '4019238054415';
+    await runSearch('4019238054415');
+});
+
 async function runSearch(query) {
     showLoading();
 
