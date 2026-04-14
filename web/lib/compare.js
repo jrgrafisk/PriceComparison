@@ -9,6 +9,41 @@ function buildUrl(shop, gtin) {
     return shop.urlSuffix ? url + shop.urlSuffix : url;
 }
 
+function parseJSONLDPrice(html, gtin, shop) {
+    const $ = cheerio.load(html);
+    const scripts = $('script[type="application/ld+json"]');
+
+    for (let i = 0; i < scripts.length; i++) {
+        try {
+            const raw = $(scripts[i]).html();
+            if (!raw) continue;
+            const data = JSON.parse(raw);
+            const items = Array.isArray(data) ? data : [data];
+
+            for (const item of items) {
+                // Must have offers with a price
+                if (!item.offers) continue;
+
+                // If product has a GTIN, verify it matches
+                const productGtin = item.gtin13 || item.gtin || item.gtin8 || item.gtin12 || item.gtin14;
+                if (productGtin && String(productGtin).trim() !== gtin) continue;
+
+                const offerList = Array.isArray(item.offers) ? item.offers : [item.offers];
+                for (const offer of offerList) {
+                    const price = parseFloat(offer.price);
+                    if (isNaN(price) || price <= 0) continue;
+                    const currency = offer.priceCurrency || shop.defaultCurrency;
+                    const priceText = currency === 'DKK'
+                        ? `${price.toFixed(2).replace('.', ',')} kr.`
+                        : `${price.toFixed(2)} €`;
+                    return { priceText, price, currency };
+                }
+            }
+        } catch (e) {}
+    }
+    return null;
+}
+
 function parseCSSPrice(html, shop) {
     const $ = cheerio.load(html);
     const selectors = shop.priceSelector.split(',').map(s => s.trim());
@@ -74,9 +109,14 @@ async function fetchShopPrice(shop, gtin) {
         if (!res.ok) return null;
         const html = await res.text();
 
-        const priceData = shop.inertia
+        let priceData = shop.inertia
             ? parseInertiaPrice(html, shop)
             : parseCSSPrice(html, shop);
+
+        // Fallback to JSON-LD for shops without Inertia when CSS finds nothing
+        if (!priceData && !shop.inertia) {
+            priceData = parseJSONLDPrice(html, gtin, shop);
+        }
 
         if (!priceData) return null;
 
