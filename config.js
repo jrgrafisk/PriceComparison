@@ -52,7 +52,7 @@ const SHOPS = [
     {
         name: "Cykelshoppen",
         url: "https://cykelshoppen.dk/search?query=",
-        priceSelector: ".price-purchase",
+        priceSelector: ".price-purchase.text-sm, .price-purchase",
         gtinSelectors: [
             {
                 type: "jsonld",
