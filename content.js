@@ -749,20 +749,24 @@ function findGTIN() {
         }
     }
 
-    // 2. Bike-Discount specific: check for netz-ean element
+    // 2. Bike-Discount specific: check for netz-ean element, then dataLayer
     if (window.location.hostname.includes('bike-discount.de')) {
         const netzEan = document.querySelector('.netz-ean');
         if (netzEan) {
             const gtin = netzEan.textContent?.trim().replace(/[^0-9]/g, '') || '';
             if (gtin.length >= 8 && gtin.length <= 14) {
-
-                productInfo.gtin.push({
-                    value: gtin,
-                    source: 'netz-ean class',
-                    url: window.location.href
-                });
+                productInfo.gtin.push({ value: gtin, source: 'netz-ean class', url: window.location.href });
                 cachedGTIN = gtin;
                 return gtin;
+            }
+        }
+        // Fallback: parse productEAN from dataLayer push script
+        for (const script of document.querySelectorAll('script:not([type])')) {
+            const m = script.textContent.match(/"productEAN"\s*:\s*"(\d{8,14})"/);
+            if (m) {
+                productInfo.gtin.push({ value: m[1], source: 'dataLayer productEAN', url: window.location.href });
+                cachedGTIN = m[1];
+                return m[1];
             }
         }
     }

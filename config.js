@@ -26,11 +26,11 @@ const SHOPS = [
     },
     {
         name: "Bike Discount",
-        url: "https://www.bike-discount.de/en/search?sSearch=",
-        priceSelector: "meta[itemprop='price'], #netz-price, .product--price",
+        url: "https://www.bike-discount.de/en/search?search=",
+        priceSelector: "meta[itemprop='price'], .product-price-wrapper meta[itemprop='price'], #netz-price",
         gtinSelectors: [".netz-ean", "[data-ean]", ".pd-ean"],
         domain: "bike-discount.de",
-        tablePosition: ".product--tax",
+        tablePosition: ".product-detail-tax",
         defaultCurrency: "EUR"
     },
     {
