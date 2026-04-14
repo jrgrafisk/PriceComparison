@@ -38,6 +38,15 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return false;
     }
 
+    // Handle openTabs action (from cart widget in content script)
+    if (message.action === 'openTabs') {
+        const urls = message.urls || [];
+        urls.forEach((url, i) => {
+            browser.tabs.create({ url, active: i === urls.length - 1 });
+        });
+        return false;
+    }
+
     // Handle shopsUpdated action
     if (message.action === 'shopsUpdated') {
         // Broadcast to all tabs

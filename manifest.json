@@ -5,6 +5,7 @@
   "description": "Compare bike part prices across multiple stores.",
   "permissions": [
     "activeTab",
+    "tabs",
     "storage",
     "https://*.cykelgear.dk/*",
     "https://*.bike24.com/*",
@@ -22,7 +23,8 @@
     "https://*.cykelshoppen.dk/*",
     "https://*.boerkopcykler.dk/*",
     "https://*.hollandbikeshop.com/*",
-    "https://*.pedalatleten.dk/*"
+    "https://*.pedalatleten.dk/*",
+    "https://*.csmegastore.dk/*"
   ],
   "background": {
     "scripts": [
