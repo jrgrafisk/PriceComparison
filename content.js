@@ -1792,8 +1792,8 @@ function updateTableSafely(newHTML) {
     }
     const tableContainer = document.querySelector('.price-comparison-table');
     if (tableContainer) {
-        const fragment = document.createRange().createContextualFragment(newHTML);
-        tableContainer.replaceChildren(fragment);
+        const parsed = new DOMParser().parseFromString(newHTML, 'text/html');
+        tableContainer.replaceChildren(...Array.from(parsed.body.childNodes));
     } else {
         insertComparisonTable(newHTML);
     }
@@ -1919,7 +1919,8 @@ function insertComparisonTable(shop, comparisonMessage, retryCount = 0) {
 
     const tableElement = document.createElement('div');
     tableElement.classList.add('price-comparison-table');
-    tableElement.appendChild(document.createRange().createContextualFragment(comparisonMessage));
+    const parsed = new DOMParser().parseFromString(comparisonMessage, 'text/html');
+    Array.from(parsed.body.childNodes).forEach(node => tableElement.appendChild(node));
     tableElement.style.marginTop = '10px';
     tableElement.style.padding = '10px';
     tableElement.style.border = '1px solid #ccc';
