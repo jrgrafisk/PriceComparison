@@ -1,7 +1,7 @@
 const SHOPS = [
     'Bike Discount', 'Bike Components', 'Cykelgear', 'Cykelshoppen',
-    'AllBike', 'Cykelpartner', 'Cykelexperten', 'Fri Bike Shop (beta)',
-    'AllTricks (beta)', 'R2 Bike'
+    'AllBike', 'Cykelpartner', 'Cykelexperten', 'Børkop Cykler',
+    'Bike24', 'AllTricks', 'R2 Bike'
 ];
 
 const form = document.getElementById('compareForm');
