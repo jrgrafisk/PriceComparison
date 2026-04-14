@@ -161,17 +161,17 @@ const SHOPS = [
         defaultCurrency: "DKK"
     },
     {
-	    name: "R2 Bike",
-	    url: "https://r2-bike.com/search/?qs={gtin}&lang=eng",
-	    priceSelector: "meta[itemprop='price'], .ndGAfVKBrutto, .price.no-letter-spacing.productbox-price.mas-price-color, [itemprop='content']",
-	    gtinSelectors: [
-	        '[itemprop="gtin13"]',
-	        '[itemprop="gtin"]'
-	    ],
-	    domain: "r2-bike.com",
-	    tablePosition: ".vat_info",
-	    defaultCurrency: "EUR"
-	}
+        name: "R2 Bike",
+        url: "https://r2-bike.com/search/?qs={gtin}&lang=eng",
+        priceSelector: "meta[name='ndGAfVKBrutto'], meta[itemprop='price'], .price.no-letter-spacing.productbox-price.mas-price-color",
+        gtinSelectors: [
+            '[itemprop="gtin13"]',
+            '[itemprop="gtin"]'
+        ],
+        domain: "r2-bike.com",
+        tablePosition: ".vat_info",
+        defaultCurrency: "EUR"
+    }
 ];
 
 // Product info template
