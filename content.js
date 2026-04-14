@@ -271,6 +271,25 @@ function extractInertiaPrice(html, shop) {
     return null;
 }
 
+function extractDataPropsPrice(html, shop) {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const { selector, attribute, productPaths, priceField } = shop.dataProps;
+    const el = doc.querySelector(selector);
+    if (!el) return null;
+
+    let data;
+    try { data = JSON.parse(el.getAttribute(attribute)); } catch (e) { return null; }
+
+    for (const path of productPaths) {
+        const products = path.split('.').reduce((obj, key) => obj?.[key], data);
+        if (Array.isArray(products) && products.length > 0) {
+            const price = parseFloat(products[0][priceField]);
+            if (!isNaN(price) && price > 0) return price.toFixed(2) + '\u20ac';
+        }
+    }
+    return null;
+}
+
 function extractJSONLDPrice(html, gtin) {
     const doc = new DOMParser().parseFromString(html, 'text/html');
     const scripts = doc.querySelectorAll('script[type="application/ld+json"]');
@@ -310,6 +329,9 @@ function displayPrice(responses, identifier, identifierType) {
             let priceText;
             if (shop.inertia) {
                 priceText = extractInertiaPrice(response.html, shop);
+                if (!priceText) return null;
+            } else if (shop.dataProps) {
+                priceText = extractDataPropsPrice(response.html, shop);
                 if (!priceText) return null;
             } else {
                 const doc = new DOMParser().parseFromString(response.html, 'text/html');
