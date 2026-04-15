@@ -11,14 +11,14 @@ const SHOPS = [
     {
         name: "Bike24",
         url: "https://www.bike24.com/search-result?searchTerm=",
-        priceSelector: ".price__value, .text-xl.leading-none.text-nowrap",
+        priceSelector: "[itemprop='price'], .price, .product-price",
         gtinSelectors: [
-            '[itemprop="gtin13"]',
-            '[itemprop="gtin"]',
             {
                 type: "application/ld+json",
                 paths: ["gtin", "gtin13", "gtin8", "gtin12", "gtin14"]
-            }
+            },
+            '[itemprop="gtin13"]',
+            '[itemprop="gtin"]'
         ],
         domain: "bike24.com",
         tablePosition: ".product-availability__title",
