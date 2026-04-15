@@ -95,15 +95,6 @@ const SHOPS = [
         defaultCurrency: "DKK"
     },
     {
-        name: "AllBike",
-        url: "https://www.allbike.dk/catalogsearch/result/?q=",
-        priceSelector: "[data-price-type='finalPrice'] .price, .price-wrapper .price",
-        gtinSelectors: ["td.col.data[data-th=\"EAN\"]"],
-        domain: "allbike.dk",
-        tablePosition: ".price-box",
-        defaultCurrency: "DKK"
-    },
-    {
         name: "Cykelpartner",
         url: "https://www.cykelpartner.dk/produktsogning?q=",
         priceSelector: ".price-separated, .price, .uk-h2.uk-text-bold.uk-text-primary",

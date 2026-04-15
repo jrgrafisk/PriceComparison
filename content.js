@@ -1498,15 +1498,14 @@ async function searchWithIdentifier(identifier, identifierType, onShopResult, sk
                 url: url
             }).then(r => r || { html: null, url });
 
-            // Per-shop timeout (e.g. Cykelpartner)
-            const result = shop.timeout
-                ? await Promise.race([
-                    fetchPromise,
-                    new Promise(resolve =>
-                        setTimeout(() => resolve({ html: null, url, timedOut: true }), shop.timeout)
-                    )
-                  ])
-                : await fetchPromise;
+            // Per-shop timeout — default 7s for all shops
+            const timeoutMs = shop.timeout || 7000;
+            const result = await Promise.race([
+                fetchPromise,
+                new Promise(resolve =>
+                    setTimeout(() => resolve({ html: null, url, timedOut: true }), timeoutMs)
+                )
+            ]);
 
             partialResults[i] = result;
             onShopResult?.(shop.domain, result.timedOut ? 'timeout' : !!result.html);
