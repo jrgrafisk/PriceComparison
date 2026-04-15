@@ -12,6 +12,15 @@ const SHOPS = [
         name: "Bike24",
         url: "https://www.bike24.com/search-result?searchTerm=",
         priceSelector: "[itemprop='price'], .price, .product-price",
+        nextData: {
+            productPaths: [
+                "props.pageProps.product",
+                "props.pageProps.searchResult.products",
+                "props.pageProps.data.products",
+                "props.pageProps.initialData.products"
+            ],
+            priceField: "price.regular.value"
+        },
         gtinSelectors: [
             {
                 type: "application/ld+json",

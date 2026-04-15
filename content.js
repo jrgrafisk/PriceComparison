@@ -294,6 +294,26 @@ function extractDataPropsPrice(html, shop) {
     return null;
 }
 
+function extractNextDataPrice(html, shop) {
+    if (!shop.nextData) return null;
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const el = doc.querySelector('script#__NEXT_DATA__');
+    if (!el) return null;
+    let data;
+    try { data = JSON.parse(el.textContent); } catch (e) { return null; }
+    const { productPaths, priceField } = shop.nextData;
+    for (const path of productPaths) {
+        const node = path.split('.').reduce((obj, key) => obj?.[key], data);
+        const products = Array.isArray(node) ? node : (node ? [node] : []);
+        for (const product of products) {
+            const priceNode = priceField.split('.').reduce((obj, key) => obj?.[key], product);
+            const price = parseFloat(priceNode);
+            if (!isNaN(price) && price > 0) return String(price);
+        }
+    }
+    return null;
+}
+
 function extractJSONLDPrice(html, gtin) {
     const doc = new DOMParser().parseFromString(html, 'text/html');
     const scripts = doc.querySelectorAll('script[type="application/ld+json"]');
@@ -370,10 +390,14 @@ function displayPrice(responses, identifier, identifierType) {
                 const doc = new DOMParser().parseFromString(response.html, 'text/html');
                 const priceElement = doc.querySelector(shop.priceSelector);
                 if (priceElement) {
-                    priceText = priceElement.textContent.trim()
+                    // Handle both text elements and <meta content="..."> elements
+                    priceText = (priceElement.textContent.trim() || priceElement.getAttribute('content') || '')
                         .replace(/^(from|fra|ab|dès|vanaf)\s+/i, '').trim();
-                } else {
-                    priceText = extractJSONLDPrice(response.html, identifier);
+                }
+                // If CSS selector found nothing or a meta with empty text, try JSON-LD then __NEXT_DATA__
+                if (!priceText) {
+                    priceText = extractJSONLDPrice(response.html, identifier)
+                             || extractNextDataPrice(response.html, shop);
                     if (!priceText) return null;
                 }
             }
