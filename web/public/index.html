@@ -133,5 +133,48 @@
 </footer>
 
 <script src="/js/app.js"></script>
+
+<!-- Cookie/analytics banner -->
+<div id="pp-consent" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:999;background:#1f2937;color:#f9fafb;padding:14px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;font-size:13px;">
+    <span>Vi bruger anonym statistik (Umami) til at tælle besøg og søgninger — ingen cookies, ingen persondata. <a href="/support#analytics" style="color:#f2994b;">Læs mere</a></span>
+    <div style="display:flex;gap:8px;flex-shrink:0;">
+        <button id="consent-accept" style="padding:6px 16px;background:#f2994b;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px;">OK</button>
+        <button id="consent-decline" style="padding:6px 16px;background:transparent;color:#9ca3af;border:1px solid #4b5563;border-radius:6px;cursor:pointer;font-size:13px;">Afvis</button>
+    </div>
+</div>
+
+<script>
+(function () {
+    function loadUmami() {
+        var s = document.createElement('script');
+        s.defer = true;
+        s.src = 'https://analytics.jrgrafisk.dk/script.js';
+        s.setAttribute('data-website-id', 'DIN_WEBSITE_ID');
+        document.head.appendChild(s);
+    }
+
+    var consent = localStorage.getItem('pp-analytics');
+    var banner = document.getElementById('pp-consent');
+
+    if (consent === 'accepted') {
+        loadUmami();
+        if (banner) banner.style.display = 'none';
+    } else if (consent === 'declined') {
+        if (banner) banner.style.display = 'none';
+    }
+    // else: show banner (already flex from inline style)
+
+    document.getElementById('consent-accept').addEventListener('click', function () {
+        localStorage.setItem('pp-analytics', 'accepted');
+        banner.style.display = 'none';
+        loadUmami();
+    });
+    document.getElementById('consent-decline').addEventListener('click', function () {
+        localStorage.setItem('pp-analytics', 'declined');
+        banner.style.display = 'none';
+    });
+})();
+</script>
+
 </body>
 </html>
