@@ -1540,7 +1540,7 @@ async function findAndComparePrice() {
                 <p>Kan ikke finde match for dette produkt.</p>
                 ${productName ? `<p><a href="https://www.ecosia.org/search?method=index&q=${encodeURIComponent(productName)}" target="_blank">Prøv en web-søgning 🔍</a></p>` : ''}
             `;
-            insertComparisonTable(shop, noGtinMessage);
+            insertComparisonTable(shop, noGtinMessage, 0, null, 0, false);
             return;
         }
 
@@ -1953,7 +1953,7 @@ function addDkkPriceDisplay() {
 
 
 
-function insertComparisonTable(shop, comparisonMessage, retryCount = 0, summary = null, savings = 0) {
+function insertComparisonTable(shop, comparisonMessage, retryCount = 0, summary = null, savings = 0, startOpen = true) {
     if (!comparisonMessage || typeof comparisonMessage !== 'string') return;
     if (document.querySelector('.price-comparison-table')) return;
     if (comparisonMessage.includes('Vi kunne ikke finde en stegkode eller varenummer for dette produkt')) return;
@@ -1980,7 +1980,7 @@ function insertComparisonTable(shop, comparisonMessage, retryCount = 0, summary 
     const cartIconBtn = document.createElement('button');
     cartIconBtn.textContent = '🛒';
     cartIconBtn.title = 'Kurv';
-    cartIconBtn.style.cssText = 'background:none;border:none;color:white;cursor:pointer;font-size:15px;padding:0;line-height:1;opacity:.85;';
+    cartIconBtn.style.cssText = 'background:white;border:none;color:#f2994b;cursor:pointer;font-size:14px;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;';
     const closeBtn = document.createElement('button');
     closeBtn.textContent = '✕';
     closeBtn.style.cssText = 'background:none;border:none;color:white;cursor:pointer;font-size:16px;padding:0;line-height:1;opacity:.85;';
@@ -2175,10 +2175,15 @@ function insertComparisonTable(shop, comparisonMessage, retryCount = 0, summary 
     // Trigger button
     const btn = document.createElement('div');
     btn.style.cssText = 'background:#f2994b;color:white;border-radius:28px;padding:10px 18px;cursor:grab;box-shadow:0 4px 16px rgba(0,0,0,.2);font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;user-select:none;white-space:nowrap;';
+    const dragGrip = document.createElement('span');
+    dragGrip.textContent = '⠿';
+    dragGrip.title = 'Træk for at flytte';
+    dragGrip.style.cssText = 'opacity:0.5;font-size:15px;margin-right:-2px;';
     const btnIcon = document.createElement('span');
     btnIcon.textContent = '🔍';
     const btnLabel = document.createElement('span');
     btnLabel.textContent = summary || 'Vis prissammenligning';
+    btn.appendChild(dragGrip);
     btn.appendChild(btnIcon);
     btn.appendChild(btnLabel);
 
@@ -2226,8 +2231,8 @@ function insertComparisonTable(shop, comparisonMessage, retryCount = 0, summary 
     widget.appendChild(btn);
     document.body.appendChild(widget);
 
-    // Restore open/closed state — default open so user sees results immediately
-    panel.style.display = sessionStorage.getItem('pp-open') === 'false' ? 'none' : 'block';
+    // Restore open/closed state — open if GTIN found and user hasn't closed it
+    panel.style.display = (startOpen && sessionStorage.getItem('pp-open') !== 'false') ? 'block' : 'none';
 
     PriceTracker.attachTrackingHandlers();
     initializeToggleFunctionality();

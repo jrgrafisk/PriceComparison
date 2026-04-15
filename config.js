@@ -200,7 +200,8 @@ const SHOPS = [
         ],
         domain: "hollandbikeshop.com",
         tablePosition: ".color-sec__price",
-        defaultCurrency: "EUR"
+        defaultCurrency: "EUR",
+        timeout: 5000
     }
 ];
 
