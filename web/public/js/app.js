@@ -37,6 +37,15 @@ async function runSearch(query) {
             return;
         }
 
+        // Track search
+        if (typeof umami !== 'undefined') {
+            umami.track('search', {
+                query: query.startsWith('http') ? 'url' : query,
+                results: data.results?.length ?? 0,
+                gtin: data.gtin
+            });
+        }
+
         showResults(data);
     } catch (e) {
         showError('Kunne ikke oprette forbindelse til serveren. Prøv igen.');
@@ -73,7 +82,8 @@ function showResults(data) {
                 </div>
                 <div class="result-right">
                     <div class="result-price">${r.priceText}</div>
-                    <a class="result-link" href="${r.url}" target="_blank" rel="noopener">
+                    <a class="result-link" href="${r.url}" target="_blank" rel="noopener"
+                       data-shop="${r.shop}" data-price="${r.dkk}" data-rank="${i + 1}">
                         Besøg →
                     </a>
                 </div>
@@ -91,6 +101,20 @@ function showResults(data) {
         ${cards}
         ${failed ? `<p style="font-size:11px;color:#bbb;margin-top:12px;">Ikke tilgængelig på webversionen: ${failed}</p>` : ''}
     `;
+
+    // Track shop clicks
+    if (typeof umami !== 'undefined') {
+        resultsEl.querySelectorAll('.result-link').forEach(link => {
+            link.addEventListener('click', () => {
+                umami.track('click-shop', {
+                    shop: link.dataset.shop,
+                    price: parseInt(link.dataset.price),
+                    rank: parseInt(link.dataset.rank),
+                    gtin: data.gtin
+                });
+            });
+        });
+    }
 }
 
 function showError(msg) {

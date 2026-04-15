@@ -124,7 +124,7 @@
         <h2>Privatlivspolitik</h2>
 
         <div class="highlight-box">
-            ✓ PedalPricer indsamler, gemmer eller sender ingen personlige oplysninger. Udvidelsen fungerer udelukkende lokalt i din browser.
+            ✓ PedalPricer-udvidelsen indsamler, gemmer eller sender ingen personlige oplysninger. Udvidelsen fungerer udelukkende lokalt i din browser og tracker ingenting.
         </div>
 
         <h3>Hvad gør udvidelsen?</h3>
@@ -156,6 +156,38 @@
                 <span class="perm-desc">Adgang til de understøttede cykelbutikkers domæner, så udvidelsen kan hente priser i baggrunden. Udvidelsen læser aldrig indhold på andre sider.</span>
             </div>
         </div>
+    </div>
+
+    <!-- ANALYTICS -->
+    <div class="section" id="analytics">
+        <h2>Statistik på pedalpricer.cc</h2>
+
+        <div class="highlight-box" style="background:#fff8f0;border-color:#f2994b;color:#92400e;">
+            ℹ️ Dette gælder kun webværktøjet på pedalpricer.cc — ikke browser-udvidelsen, som ikke tracker noget som helst.
+        </div>
+
+        <p>Vi bruger <strong>Umami Analytics</strong> til at forstå, hvordan webværktøjet bruges. Umami er open source, cookiefrit og indsamler ingen persondata.</p>
+
+        <h3>Hvad registreres?</h3>
+        <ul>
+            <li>Antal besøg og sidevisninger (anonymt)</li>
+            <li>Hvilke EAN/GTIN-stregkoder der søges på</li>
+            <li>Hvilke butikker folk klikker videre til</li>
+            <li>Land (udledt af IP — IP-adressen gemmes ikke)</li>
+        </ul>
+
+        <h3>Hvad registreres IKKE?</h3>
+        <ul>
+            <li>Ingen cookies sættes</li>
+            <li>Ingen IP-adresser gemmes</li>
+            <li>Ingen fingerprinting</li>
+            <li>Ingen personidentificerbare oplysninger</li>
+        </ul>
+
+        <h3>Fravælg statistik</h3>
+        <p>Du kan til enhver tid afvise eller trække dit samtykke tilbage:</p>
+        <button onclick="localStorage.setItem('pp-analytics','declined'); this.textContent='✓ Statistik fravalgt';" style="padding:8px 18px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600;">Afvis statistik</button>
+        <button onclick="localStorage.setItem('pp-analytics','accepted'); this.textContent='✓ Statistik accepteret';" style="margin-left:8px;padding:8px 18px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;cursor:pointer;font-size:14px;">Accepter statistik</button>
     </div>
 
     <!-- SUPPORT / FAQ -->
