@@ -1,0 +1,47 @@
+{
+  "manifest_version": 2,
+  "name": "PedalPricer",
+  "version": "1.0.0",
+  "description": "Sammenlign priser på cykeldele",
+  "permissions": [
+    "storage",
+    "https://*.cykelgear.dk/*",
+    "https://*.bike24.com/*",
+    "https://*.bike-discount.de/*",
+    "https://*.bike-components.de/*",
+    "https://*.allbike.dk/*",
+    "https://*.cykelpartner.dk/*",
+    "https://*.r2-bike.com/*",
+    "https://*.cykelexperten.dk/*",
+    "https://*.alltricks.com/*",
+    "https://*.cykelshoppen.dk/*",
+    "https://*.boerkopcykler.dk/*",
+    "https://*.hollandbikeshop.com/*",
+    "https://*.pedalatleten.dk/*",
+    "https://*.csmegastore.dk/*"
+  ],
+  "background": {
+    "scripts": ["config.js", "background.js"]
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*/*"],
+      "js": ["config.js", "content.js"]
+    }
+  ],
+  "icons": {
+    "48": "icons/48x48pp.png",
+    "128": "icons/128x128pp.png"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "pedalpricer-mobile@jrgrafisk.dk",
+      "strict_min_version": "142.0",
+      "data_collection_permissions": {
+        "required": ["none"],
+        "optional": []
+      }
+    },
+    "gecko_android": {}
+  }
+}

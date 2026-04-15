@@ -88,7 +88,7 @@ const SHOPS = [
     {
         name: "AllBike",
         url: "https://www.allbike.dk/catalogsearch/result/?q=",
-        priceSelector: ".price",
+        priceSelector: "[data-price-type='finalPrice'] .price, .price-wrapper .price",
         gtinSelectors: ["td.col.data[data-th=\"EAN\"]"],
         domain: "allbike.dk",
         tablePosition: ".price-box",
