@@ -354,10 +354,9 @@ function displayPrice(responses, identifier, identifierType) {
                 if (shop.scriptExtract.container) {
                     const doc = new DOMParser().parseFromString(response.html, 'text/html');
                     const container = doc.querySelector(shop.scriptExtract.container);
-                    if (container) {
-                        searchHtml = Array.from(container.querySelectorAll('script'))
-                            .map(s => s.textContent).join('\n');
-                    }
+                    if (!container) return null; // container configured but not present = no results
+                    searchHtml = Array.from(container.querySelectorAll('script'))
+                        .map(s => s.textContent).join('\n');
                 }
                 const priceMatch = searchHtml.match(new RegExp(shop.scriptExtract.price));
                 if (!priceMatch) return null;
