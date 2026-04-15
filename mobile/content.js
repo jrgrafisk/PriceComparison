@@ -170,20 +170,30 @@
             alignItems: 'center', gap: '7px', WebkitTapHighlightColor: 'transparent',
             letterSpacing: '-0.01em'
         });
-        fab.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Priser';
+        setFabLabel(fab, '🔍', 'Priser');
         fab.addEventListener('click', onFABClick);
         document.body.appendChild(fab);
     }
 
+    function setFabLabel(btn, icon, text) {
+        btn.textContent = '';
+        const iconEl = document.createElement('span');
+        iconEl.textContent = icon;
+        const textEl = document.createElement('span');
+        textEl.textContent = text;
+        btn.appendChild(iconEl);
+        btn.appendChild(textEl);
+    }
+
     async function onFABClick() {
-        fab.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> Henter…';
+        setFabLabel(fab, '⏳', 'Henter…');
         fab.style.opacity = '0.8';
         fab.disabled = true;
 
         const gtin = extractGTIN();
         const results = gtin ? await fetchAllPrices(gtin) : [];
 
-        fab.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Priser';
+        setFabLabel(fab, '🔍', 'Priser');
         fab.style.opacity = '1';
         fab.disabled = false;
 
@@ -225,9 +235,15 @@
             padding: '12px 20px 12px', borderBottom: '1px solid #f2f2f2', flexShrink: '0'
         });
         const logo = el('div', { display: 'flex', alignItems: 'center', gap: '8px' });
-        logo.innerHTML = `<svg width="22" height="22" viewBox="0 0 24 24" fill="${ORANGE}"><circle cx="12" cy="12" r="10"/><text x="12" y="16" text-anchor="middle" fill="white" font-size="10" font-weight="700" font-family="system-ui">PP</text></svg>`;
+        const logoIcon = el('div', {
+            width: '24px', height: '24px', borderRadius: '50%', background: ORANGE,
+            color: '#fff', fontSize: '10px', fontWeight: '700', display: 'flex',
+            alignItems: 'center', justifyContent: 'center', flexShrink: '0'
+        });
+        logoIcon.textContent = 'PP';
         const logoText = el('span', { fontWeight: '700', fontSize: '16px', color: '#111' });
         logoText.textContent = 'PedalPricer';
+        logo.appendChild(logoIcon);
         logo.appendChild(logoText);
         const closeBtn = el('button', {
             background: '#f2f2f2', border: 'none', borderRadius: '50%',
