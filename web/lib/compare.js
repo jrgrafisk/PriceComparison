@@ -119,9 +119,8 @@ function parseScriptPrice(html, shop) {
     if (container) {
         const $ = cheerio.load(html);
         const el = $(container).first();
-        if (el.length) {
-            searchHtml = el.find('script').map((i, s) => $(s).html() || '').get().join('\n');
-        }
+        if (!el.length) return null; // container configured but not present = no results
+        searchHtml = el.find('script').map((i, s) => $(s).html() || '').get().join('\n');
     }
 
     const priceMatch = searchHtml.match(new RegExp(priceRegex));
