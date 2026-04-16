@@ -20,13 +20,18 @@
             <img src="/icons/48x48pp.png" alt="PedalPricer logo">
             PedalPricer
         </div>
-        <a class="btn btn-primary"
+        <a id="nav-btn-firefox" class="btn btn-primary"
            href="https://addons.mozilla.org/en-US/firefox/addon/pedalpricer/"
            target="_blank" rel="noopener">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm0 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2z"/>
             </svg>
             Tilføj til Firefox
+        </a>
+        <a id="nav-btn-chrome" class="btn btn-primary" style="display:none"
+           href="https://chromewebstore.google.com/detail/pedalpricer/kacmjmidelfannhpcijgmmkfemdeeobj"
+           target="_blank" rel="noopener">
+            Tilføj til Chrome
         </a>
     </div>
 </nav>
@@ -38,12 +43,12 @@
             <h1>Find den bedste pris på <span>cykeldele</span> – automatisk</h1>
             <p>PedalPricer søger op til 11 cykelbutikker på sekunder og viser dig med det samme, hvor du sparer mest.</p>
             <div class="hero-cta">
-                <a class="btn btn-primary btn-large"
+                <a id="hero-btn-firefox" class="btn btn-primary btn-large"
                    href="https://addons.mozilla.org/en-US/firefox/addon/pedalpricer/"
                    target="_blank" rel="noopener">
                     Tilføj til Firefox – det er gratis
                 </a>
-                <a class="btn btn-outline btn-large"
+                <a id="hero-btn-chrome" class="btn btn-outline btn-large"
                    href="https://chromewebstore.google.com/detail/pedalpricer/kacmjmidelfannhpcijgmmkfemdeeobj"
                    target="_blank" rel="noopener">
                     Tilføj til Chrome – det er gratis
@@ -134,6 +139,36 @@
 </footer>
 
 <script src="/js/app.js"></script>
+
+<script>
+(function () {
+    const ua = navigator.userAgent;
+    const isFirefox = /Firefox\//.test(ua);
+    // Chromium-based: Chrome, Edge, Brave, Opera, Vivaldi, Arc, etc.
+    const isChromium = !isFirefox && /Chrome\/|Chromium\//.test(ua);
+
+    if (isChromium) {
+        // Nav: hide Firefox, show Chrome
+        document.getElementById('nav-btn-firefox').style.display = 'none';
+        document.getElementById('nav-btn-chrome').style.display = '';
+
+        // Hero: swap primary/outline
+        const ff = document.getElementById('hero-btn-firefox');
+        const ch = document.getElementById('hero-btn-chrome');
+        ff.classList.replace('btn-primary', 'btn-outline');
+        ch.classList.replace('btn-outline', 'btn-primary');
+
+        // Hero: put Chrome button first
+        ff.parentNode.insertBefore(ch, ff);
+    } else if (isFirefox) {
+        // Already the default — just ensure Chrome nav button stays hidden
+        document.getElementById('nav-btn-chrome').style.display = 'none';
+    } else {
+        // Unknown browser: show both nav buttons
+        document.getElementById('nav-btn-chrome').style.display = '';
+    }
+})();
+</script>
 
 <!-- Cookie/analytics banner -->
 <div id="pp-consent" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:999;background:#1f2937;color:#f9fafb;padding:14px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;font-size:13px;">
