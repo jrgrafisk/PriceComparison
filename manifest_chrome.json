@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "PedalPricer",
+  "version": "1.9.2",
+  "description": "Compare bike part prices across multiple stores.",
+  "permissions": [
+    "activeTab",
+    "tabs",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://*.cykelgear.dk/*",
+    "https://*.bike24.com/*",
+    "https://*.bike-discount.de/*",
+    "https://*.bikable.no/*",
+    "https://*.bikable.com/*",
+    "https://*.bikable.se/*",
+    "https://*.bike-components.de/*",
+    "https://jrgrafisk.dk/*",
+    "https://*.cykelpartner.dk/*",
+    "https://*.r2-bike.com/*",
+    "https://*.cykelexperten.dk/*",
+    "https://*.alltricks.com/*",
+    "https://*.cykelshoppen.dk/*",
+    "https://*.boerkopcykler.dk/*",
+    "https://*.hollandbikeshop.com/*",
+    "https://*.pedalatleten.dk/*",
+    "https://*.csmegastore.dk/*"
+  ],
+  "background": {
+    "service_worker": "background_sw.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*/*"],
+      "js": ["config.js", "content.js"]
+    }
+  ],
+  "icons": {
+    "16": "icons/16x16pp.png",
+    "48": "icons/48x48pp.png",
+    "128": "icons/128x128pp.png"
+  },
+  "action": {
+    "default_popup": "popup.html"
+  }
+}
