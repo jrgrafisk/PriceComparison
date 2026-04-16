@@ -35,23 +35,17 @@ const SHOPS = [
     },
     {
         name: "Bike Discount",
-        url: "https://www.bike-discount.de/en/search?search=",
-        priceSelector: "meta[itemprop='price'], .product-price-wrapper meta[itemprop='price'], #netz-price",
+        url: "https://www.bike-discount.de/en/search?sSearch=",
+        priceSelector: "meta[itemprop='price'], #netz-price, .product--price",
         gtinSelectors: [".netz-ean", "[data-ean]", ".pd-ean"],
         domain: "bike-discount.de",
-        tablePosition: ".product-detail-tax",
+        tablePosition: ".product--tax",
         defaultCurrency: "EUR"
     },
     {
         name: "Bike Components",
         url: "https://www.bike-components.de/en/s/?keywords=",
         priceSelector: ".price.site-price, .price.block.pt-6[data-test='auto-product-price']",
-        dataProps: {
-            selector: '[data-component="ProductCatalog"]',
-            attribute: "data-props",
-            productPaths: ["initialData.products"],
-            priceField: "priceRaw"
-        },
         gtinSelectors: [
             {
                 type: "application/ld+json",
