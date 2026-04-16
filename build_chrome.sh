@@ -2,7 +2,7 @@
 set -e
 
 OUTDIR=$(mktemp -d)
-VERSION=$(node -e "const m=require('./manifest.json');console.log(m.version)")
+VERSION=$(node -e "const m=require('./manifest_chrome.json');console.log(m.version)")
 
 # Copy extension files
 cp config.js content.js popup.html popup.js "$OUTDIR/"
