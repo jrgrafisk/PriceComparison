@@ -11,7 +11,7 @@ const SHOPS = [
     {
         name: "Bike24",
         url: "https://www.bike24.com/search-result?searchTerm=",
-        priceSelector: "[itemprop='price'], .price, .product-price",
+        priceSelector: ".text-xl.leading-none.text-nowrap, [itemprop='price'], .price, .product-price",
         nextData: {
             productPaths: [
                 "props.pageProps.product",

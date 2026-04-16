@@ -732,7 +732,23 @@ function findGTIN() {
         }
     }
 
-    // 4. If no GTIN was found in the HTML, check JSON-LD scripts
+    // 4. Scan data-props attributes for ean field (e.g. Bike24)
+    for (const el of document.querySelectorAll('[data-props]')) {
+        try {
+            const props = JSON.parse(el.getAttribute('data-props'));
+            const ean = props?.ean || props?.product?.ean;
+            if (ean) {
+                const gtin = String(ean).replace(/[^0-9]/g, '');
+                if (gtin.length >= 8 && gtin.length <= 14) {
+                    productInfo.gtin.push({ value: gtin, source: 'data-props ean', url: window.location.href });
+                    cachedGTIN = gtin;
+                    return gtin;
+                }
+            }
+        } catch {}
+    }
+
+    // 5. If no GTIN was found in the HTML, check JSON-LD scripts
 
     let foundGtinFromJSONLD = null;
     const scripts = document.querySelectorAll('script[type="application/ld+json"]');
