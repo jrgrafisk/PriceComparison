@@ -11,7 +11,16 @@ const SHOPS = [
     {
         name: "Bike24",
         url: "https://www.bike24.com/search-result?searchTerm=",
-        priceSelector: "[itemprop='price'], .price, .product-price",
+        priceSelector: ".text-xl.leading-none.text-nowrap, [itemprop='price'], .price, .product-price",
+        nextData: {
+            productPaths: [
+                "props.pageProps.product",
+                "props.pageProps.searchResult.products",
+                "props.pageProps.data.products",
+                "props.pageProps.initialData.products"
+            ],
+            priceField: "price.regular.value"
+        },
         gtinSelectors: [
             {
                 type: "application/ld+json",
@@ -26,23 +35,17 @@ const SHOPS = [
     },
     {
         name: "Bike Discount",
-        url: "https://www.bike-discount.de/en/search?search=",
-        priceSelector: "meta[itemprop='price'], .product-price-wrapper meta[itemprop='price'], #netz-price",
+        url: "https://www.bike-discount.de/en/search?sSearch=",
+        priceSelector: "meta[itemprop='price'], #netz-price, .product--price",
         gtinSelectors: [".netz-ean", "[data-ean]", ".pd-ean"],
         domain: "bike-discount.de",
-        tablePosition: ".product-detail-tax",
+        tablePosition: ".product--tax",
         defaultCurrency: "EUR"
     },
     {
         name: "Bike Components",
         url: "https://www.bike-components.de/en/s/?keywords=",
         priceSelector: ".price.site-price, .price.block.pt-6[data-test='auto-product-price']",
-        dataProps: {
-            selector: '[data-component="ProductCatalog"]',
-            attribute: "data-props",
-            productPaths: ["initialData.products"],
-            priceField: "priceRaw"
-        },
         gtinSelectors: [
             {
                 type: "application/ld+json",
@@ -83,15 +86,6 @@ const SHOPS = [
         ],
         domain: "cykelshoppen.dk",
         tablePosition: ".text-xs.font-light.text-gray-400",
-        defaultCurrency: "DKK"
-    },
-    {
-        name: "AllBike",
-        url: "https://www.allbike.dk/catalogsearch/result/?q=",
-        priceSelector: "[data-price-type='finalPrice'] .price, .price-wrapper .price",
-        gtinSelectors: ["td.col.data[data-th=\"EAN\"]"],
-        domain: "allbike.dk",
-        tablePosition: ".price-box",
         defaultCurrency: "DKK"
     },
     {
@@ -200,7 +194,8 @@ const SHOPS = [
         ],
         domain: "hollandbikeshop.com",
         tablePosition: ".color-sec__price",
-        defaultCurrency: "EUR"
+        defaultCurrency: "EUR",
+        timeout: 5000
     }
 ];
 

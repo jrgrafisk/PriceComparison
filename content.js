@@ -1,61 +1,27 @@
 /* content.js */
-// Disable all console.log statements
- // const originalConsoleLog = console.log; // Store the original console.log function
-// console.log = function() {}; // Override console.log with a no-op function
 
-// To re-enable logging later, you can restore the original function
-// console.log = originalConsoleLog; // Uncomment this line to restore logging
-
-
-
-
-// Now you can use the globally available config objects
-
-
-
-// Add shop filtering support - SINGLE DECLARATION
 let enabledShops = {};
-
-// Timeout
 let timeout;
-
-// URL tracking
 let lastUrl = location.href;
-
-// Update state tracking
 let isUpdating = false;
 
-// Get initial enabled shops state
 browser.storage.sync.get('enabledShops').then(data => {
     enabledShops = data.enabledShops || {};
 });
 
-// Add message listener for shop updates
 browser.runtime.onMessage.addListener((message) => {
     if (message.action === 'shopsUpdated') {
         enabledShops = message.enabledShops;
-        // Re-run price comparison with new shop settings
         findAndComparePrice();
     }
 });
 
-// Store referrer on page load
 if (document.referrer) {
     sessionStorage.setItem('lastReferrer', document.referrer);
 }
 
-// Reuse parser instance
+// Shared DOMParser instance — reused throughout
 const parser = new DOMParser();
-
-// Cache selectors
-const selectorCache = new Map();
-
-function getCachedSelector(selector) {
-    if (!selectorCache.has(selector)) {
-        selectorCache.set(selector, document.querySelector(selector));
-    }
-    return selectorCache.get(selector);
-}
 
 // Single initialization flag
 let isInitialized = false;
@@ -131,31 +97,14 @@ function getCurrencyCodeFromSymbol(symbol) {
 
 
 
-let gtinFound = false;
-let priceFound = false;
-let productData = {
-    gtin: null,
-    price: null,
-    mpn: null
-};
 let processedGTINs = new Map();
 let observer = null;
-let currentUrl = window.location.href;
 const EUR_TO_DKK_RATE = 7.45;
-const EUR_TO_GBP_RATE = 0.86;
-const EUR_TO_USD_RATE = 1.08;
 
 let gtinSearchAttempts = 0;
 const MAX_GTIN_SEARCH_ATTEMPTS = 2;
-let cachedGTIN = null;  // Add this at the top with other global variables
+let cachedGTIN = null;
 let lastCartPayload = null;
-
-// Get current site information
-let { price: currentPrice, currency: currentCurrency } = getCurrentPriceAndCurrency();
-
-
-/* // Convert to EUR for comparison
-const currentPriceEUR = currentCurrency === 'EUR' ? currentPrice : currentPrice / EUR_TO_DKK_RATE; */
 
 const convertEurToDkk = (priceInEur) => priceInEur * EUR_TO_DKK_RATE;
 const convertDkkToEur = (priceInDkk) => priceInDkk / EUR_TO_DKK_RATE;
@@ -252,7 +201,7 @@ function normalizePriceToEUR(price, currency) {
 }
 
 function extractInertiaPrice(html, shop) {
-    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const doc = parser.parseFromString(html, 'text/html');
     const appEl = doc.querySelector('[data-page]');
     if (!appEl) return null;
 
@@ -276,7 +225,7 @@ function extractInertiaPrice(html, shop) {
 }
 
 function extractDataPropsPrice(html, shop) {
-    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const doc = parser.parseFromString(html, 'text/html');
     const { selector, attribute, productPaths, priceField } = shop.dataProps;
     const el = doc.querySelector(selector);
     if (!el) return null;
@@ -294,8 +243,28 @@ function extractDataPropsPrice(html, shop) {
     return null;
 }
 
+function extractNextDataPrice(html, shop) {
+    if (!shop.nextData) return null;
+    const doc = parser.parseFromString(html, 'text/html');
+    const el = doc.querySelector('script#__NEXT_DATA__');
+    if (!el) return null;
+    let data;
+    try { data = JSON.parse(el.textContent); } catch (e) { return null; }
+    const { productPaths, priceField } = shop.nextData;
+    for (const path of productPaths) {
+        const node = path.split('.').reduce((obj, key) => obj?.[key], data);
+        const products = Array.isArray(node) ? node : (node ? [node] : []);
+        for (const product of products) {
+            const priceNode = priceField.split('.').reduce((obj, key) => obj?.[key], product);
+            const price = parseFloat(priceNode);
+            if (!isNaN(price) && price > 0) return String(price);
+        }
+    }
+    return null;
+}
+
 function extractJSONLDPrice(html, gtin) {
-    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const doc = parser.parseFromString(html, 'text/html');
     const scripts = doc.querySelectorAll('script[type="application/ld+json"]');
     for (const script of scripts) {
         try {
@@ -352,7 +321,7 @@ function displayPrice(responses, identifier, identifierType) {
             } else if (shop.scriptExtract) {
                 let searchHtml = response.html;
                 if (shop.scriptExtract.container) {
-                    const doc = new DOMParser().parseFromString(response.html, 'text/html');
+                    const doc = parser.parseFromString(response.html, 'text/html');
                     const container = doc.querySelector(shop.scriptExtract.container);
                     if (!container) return null; // container configured but not present = no results
                     searchHtml = Array.from(container.querySelectorAll('script'))
@@ -367,29 +336,23 @@ function displayPrice(responses, identifier, identifierType) {
                 }
                 priceText = extracted;
             } else {
-                const doc = new DOMParser().parseFromString(response.html, 'text/html');
+                const doc = parser.parseFromString(response.html, 'text/html');
                 const priceElement = doc.querySelector(shop.priceSelector);
                 if (priceElement) {
-                    priceText = priceElement.textContent.trim()
+                    // Handle both text elements and <meta content="..."> elements
+                    priceText = (priceElement.textContent.trim() || priceElement.getAttribute('content') || '')
                         .replace(/^(from|fra|ab|dès|vanaf)\s+/i, '').trim();
-                } else {
-                    priceText = extractJSONLDPrice(response.html, identifier);
+                }
+                // If CSS selector found nothing or a meta with empty text, try JSON-LD then __NEXT_DATA__
+                if (!priceText) {
+                    priceText = extractJSONLDPrice(response.html, identifier)
+                             || extractNextDataPrice(response.html, shop);
                     if (!priceText) return null;
                 }
             }
             const { price, currency: detectedCurrency } = extractPriceAndCurrency(priceText);
             const currency = detectedCurrency || shop.defaultCurrency || 'EUR';
             if (!price) return null;
-
-/*             const validation = validatePrice(
-                price,
-                currentPriceInfo.price,
-                currency,
-                currentPriceInfo.currency,
-                { debugLog: true }
-            ); */
-
-/*             if (!validation.isValid) return null; */
 
             // Validation: reject if price is >60% lower than current page price (likely wrong match)
             const priceInDkk = currency === 'DKK' ? price : price * EXCHANGE_RATES.EUR_TO_DKK;
@@ -665,140 +628,6 @@ function extractPriceAndCurrency(priceText) {
     return { price: numericPrice, currency };
 }
 
-/* 
-function validatePrice(sourcePrice, targetPrice, sourceCurrency = 'EUR', targetCurrency = 'EUR', options = {}) {
-    const {
-        lowerThreshold = 0.2,  // Price can't be 80% lower
-        upperThreshold = 1.8,  // Price can't be 80% higher
-        debugLog = true
-    } = options;
-
-    // First, ensure we have valid numeric prices
-    let sourcePriceNum = parseFloat(sourcePrice);
-    let targetPriceNum = parseFloat(targetPrice);
-
-    // Guard clauses for invalid inputs
-    if (isNaN(sourcePriceNum) || isNaN(targetPriceNum)) {
-        return {
-            isValid: false,
-            reason: 'INVALID_PRICES',
-            details: { sourcePrice, targetPrice }
-        };
-    }
-
-    // Convert both prices to EUR for comparison
-    const sourcePriceEUR = normalizePriceToEUR(sourcePriceNum, sourceCurrency);
-    const targetPriceEUR = normalizePriceToEUR(targetPriceNum, targetCurrency);
-
-    if (sourcePriceEUR === null || targetPriceEUR === null) {
-        return {
-            isValid: false,
-            reason: 'CURRENCY_CONVERSION_FAILED',
-            details: { sourcePriceEUR, targetPriceEUR }
-        };
-    }
-
-    // Calculate thresholds
-    const minimumPrice = Number(targetPriceEUR) * lowerThreshold;
-    const maximumPrice = Number(targetPriceEUR) * upperThreshold;
-
-    // Ensure all values are numbers before using toFixed
-    const sourcePriceEURNum = Number(sourcePriceEUR);
-    const targetPriceEURNum = Number(targetPriceEUR);
-    const minimumPriceNum = Number(minimumPrice);
-    const maximumPriceNum = Number(maximumPrice);
-
-    // Perform validation
-    const isTooLow = sourcePriceEURNum < minimumPriceNum;
-    const isTooHigh = sourcePriceEURNum > maximumPriceNum;
-    const isValid = !isTooLow && !isTooHigh;
-
-    return {
-        isValid,
-        reason: isValid ? 'VALID' : (isTooLow ? 'TOO_LOW' : 'TOO_HIGH'),
-        details: {
-            sourcePriceEUR: sourcePriceEURNum.toFixed(2),
-            targetPriceEUR: targetPriceEURNum.toFixed(2),
-            minimumPrice: minimumPriceNum.toFixed(2),
-            maximumPrice: maximumPriceNum.toFixed(2),
-            difference: ((sourcePriceEURNum - targetPriceEURNum) / targetPriceEURNum * 100).toFixed(2) + '%'
-        }
-    };
-} */
-
-/* function findGTINFromJSONLD() {
-
-	try {
-        const scripts = Array.from(document.querySelectorAll('script[type="application/ld+json"]'));
-        for (const script of scripts) {
-            try {
-                const parsedData = JSON.parse(script.textContent);
-                // Normalize to an array if it's not already one
-                const dataArray = Array.isArray(parsedData) ? parsedData : [parsedData];
-                
-
-                
-                // Iterate through each item in the array
-                for (const data of dataArray) {
-                    // Case 1: ProductGroup with variants
-                    if (data['@type'] === 'ProductGroup' && data.hasVariant) {
-                        const variants = Array.isArray(data.hasVariant) ? data.hasVariant : [data.hasVariant];
-                        for (const variant of variants) {
-                            if (variant.offers) {
-                                // Normalize offers to an array
-                                const offers = Array.isArray(variant.offers) ? variant.offers : [variant.offers];
-                                for (const offer of offers) {
-                                    if (offer.gtin) {
-
-                                        productInfo.gtin.push({
-                                            value: offer.gtin,
-                                            source: 'JSON-LD Product Variant Offer',
-                                            url: window.location.href
-                                        });
-                                        return offer.gtin;
-                                    } else {
-
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Case 2: Single Product schema
-                    if (data['@type'] === 'Product') {
-                        if (data.gtin) {
-
-                            productInfo.gtin.push({
-                                value: data.gtin,
-                                source: 'JSON-LD Product',
-                                url: window.location.href
-                            });
-                            return data.gtin;
-                        }
-                    }
-                }
-                
-                // Fallback: Search for 13-digit numbers in the JSON-LD data
-                const jsonString = JSON.stringify(dataArray);
-                const regex = /\b\d{13}\b/g; // Matches 13-digit numbers
-                const matches = jsonString.match(regex);
-                if (matches && matches.length > 0) {
-                    productInfo.gtin.push({
-                        value: matches[0],
-                        source: 'Fallback 13-digit number',
-                        url: window.location.href
-                    });
-                    return matches[0];
-                }
-            } catch (e) {
-
-            }
-        }
-    } catch (e) {
-
-    }
-    return null;
-} */
 
 function findGTIN() {
     // Return cached GTIN if we already found one
@@ -903,7 +732,23 @@ function findGTIN() {
         }
     }
 
-    // 4. If no GTIN was found in the HTML, check JSON-LD scripts
+    // 4. Scan data-props attributes for ean field (e.g. Bike24)
+    for (const el of document.querySelectorAll('[data-props]')) {
+        try {
+            const props = JSON.parse(el.getAttribute('data-props'));
+            const ean = props?.ean || props?.product?.ean;
+            if (ean) {
+                const gtin = String(ean).replace(/[^0-9]/g, '');
+                if (gtin.length >= 8 && gtin.length <= 14) {
+                    productInfo.gtin.push({ value: gtin, source: 'data-props ean', url: window.location.href });
+                    cachedGTIN = gtin;
+                    return gtin;
+                }
+            }
+        } catch {}
+    }
+
+    // 5. If no GTIN was found in the HTML, check JSON-LD scripts
 
     let foundGtinFromJSONLD = null;
     const scripts = document.querySelectorAll('script[type="application/ld+json"]');
@@ -1199,57 +1044,6 @@ function generateTrackingId() {
            Math.random().toString(36).substring(2, 15);
 }
 
-/* function findMPN() {
-    const mpnSelectors = [
-        '[itemprop="mpn"]',
-        '[itemprop="sku"]',
-        '.product-id',
-        'span[itemprop="productID"]',  // Refined selector for product ID
-        '.netz-ean',  // Bike-Discount specific
-        '[data-ean]'
-    ];
-
-    // Loop through selectors
-    for (const selector of mpnSelectors) {
-        const mpnElement = document.querySelector(selector);
-        if (mpnElement) {
-            // Log the HTML content of the found MPN element (only for debugging)
-
-
-            // Retrieve MPN value from text content, content attribute, or data-ean attribute
-            const mpnValue = mpnElement.textContent.trim() || 
-                             mpnElement.getAttribute('content') || 
-                             mpnElement.getAttribute('data-ean');
-                             
-            // Log found MPN value
-
-            
-            // Return the value if it's not empty
-            if (mpnValue) return mpnValue; 
-        }
-    }
-
-    // If no MPN found, log and return null
-
-    return null;
-} */
-
-/* function extractProductData() {
-    const gtin = findGTIN(); // Prioritize GTIN
-
-    if (gtin) {
-
-    } else {
-
-        const mpn = findMPN(); // Only check MPN if GTIN is not available
-
-        if (mpn) {
-
-        } else {
-
-        }
-    }
-} */
 
 
 function checkIdentifiers() {
@@ -1336,46 +1130,6 @@ function findProductName() {
 
 
 
-/* function findMPN() {
-    // Try to get the MPN (Sku) from the <span itemprop="sku">
-    const mpn = document.querySelector('[itemprop="sku"]');
-    if (mpn) {
-        const mpnValue = mpn.textContent.trim();
-        if (mpnValue) {
-
-            return mpnValue;
-        } else {
-
-        }
-    }
-
-    // Fallback: Try additional selectors if MPN is No match in the primary selector
-    const fallbackSelectors = [
-        '.product-id', 
-        '[data-sku]', 
-        '.netz-ean',  // Bike-Discount specific
-        'span[itemprop="productID"]'
-    ];
-
-    for (const selector of fallbackSelectors) {
-        const fallbackMPN = document.querySelector(selector);
-        if (fallbackMPN) {
-            const fallbackMPNValue = fallbackMPN.textContent.trim() || 
-                                      fallbackMPN.getAttribute('content') || 
-                                      fallbackMPN.getAttribute('data-ean');
-            if (fallbackMPNValue) {
-
-                return fallbackMPNValue;
-            } else {
-
-            }
-        }
-    }
-
-    // If no MPN is found, return null
-
-    return null;
-} */
 
 
 function validateGTIN(gtin) {
@@ -1474,15 +1228,14 @@ async function searchWithIdentifier(identifier, identifierType, onShopResult, sk
                 url: url
             }).then(r => r || { html: null, url });
 
-            // Per-shop timeout (e.g. Cykelpartner)
-            const result = shop.timeout
-                ? await Promise.race([
-                    fetchPromise,
-                    new Promise(resolve =>
-                        setTimeout(() => resolve({ html: null, url, timedOut: true }), shop.timeout)
-                    )
-                  ])
-                : await fetchPromise;
+            // Per-shop timeout — default 7s for all shops
+            const timeoutMs = shop.timeout || 7000;
+            const result = await Promise.race([
+                fetchPromise,
+                new Promise(resolve =>
+                    setTimeout(() => resolve({ html: null, url, timedOut: true }), timeoutMs)
+                )
+            ]);
 
             partialResults[i] = result;
             onShopResult?.(shop.domain, result.timedOut ? 'timeout' : !!result.html);
@@ -1540,7 +1293,7 @@ async function findAndComparePrice() {
                 <p>Kan ikke finde match for dette produkt.</p>
                 ${productName ? `<p><a href="https://www.ecosia.org/search?method=index&q=${encodeURIComponent(productName)}" target="_blank">Prøv en web-søgning 🔍</a></p>` : ''}
             `;
-            insertComparisonTable(shop, noGtinMessage);
+            insertComparisonTable(shop, noGtinMessage, 0, null, 0, false);
             return;
         }
 
@@ -1843,12 +1596,12 @@ function updateTableSafely(newHTML) {
     }
     const contentArea = document.querySelector('.pp-panel-content');
     if (contentArea) {
-        const parsed = new DOMParser().parseFromString(newHTML, 'text/html');
+        const parsed = parser.parseFromString(newHTML, 'text/html');
         contentArea.replaceChildren(...Array.from(parsed.body.childNodes));
     } else {
         const tableContainer = document.querySelector('.price-comparison-table');
         if (tableContainer) {
-            const parsed = new DOMParser().parseFromString(newHTML, 'text/html');
+            const parsed = parser.parseFromString(newHTML, 'text/html');
             tableContainer.replaceChildren(...Array.from(parsed.body.childNodes));
         } else {
             insertComparisonTable(null, newHTML);
@@ -1953,7 +1706,7 @@ function addDkkPriceDisplay() {
 
 
 
-function insertComparisonTable(shop, comparisonMessage, retryCount = 0, summary = null, savings = 0) {
+function insertComparisonTable(shop, comparisonMessage, retryCount = 0, summary = null, savings = 0, startOpen = true) {
     if (!comparisonMessage || typeof comparisonMessage !== 'string') return;
     if (document.querySelector('.price-comparison-table')) return;
     if (comparisonMessage.includes('Vi kunne ikke finde en stegkode eller varenummer for dette produkt')) return;
@@ -1980,7 +1733,7 @@ function insertComparisonTable(shop, comparisonMessage, retryCount = 0, summary 
     const cartIconBtn = document.createElement('button');
     cartIconBtn.textContent = '🛒';
     cartIconBtn.title = 'Kurv';
-    cartIconBtn.style.cssText = 'background:none;border:none;color:white;cursor:pointer;font-size:15px;padding:0;line-height:1;opacity:.85;';
+    cartIconBtn.style.cssText = 'background:white;border:none;color:#f2994b;cursor:pointer;font-size:14px;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;';
     const closeBtn = document.createElement('button');
     closeBtn.textContent = '✕';
     closeBtn.style.cssText = 'background:none;border:none;color:white;cursor:pointer;font-size:16px;padding:0;line-height:1;opacity:.85;';
@@ -1999,7 +1752,7 @@ function insertComparisonTable(shop, comparisonMessage, retryCount = 0, summary 
     const body = document.createElement('div');
     body.className = 'pp-panel-content';
     body.style.cssText = 'overflow-y:auto;max-height:60vh;padding:12px 16px;';
-    const parsed = new DOMParser().parseFromString(comparisonMessage, 'text/html');
+    const parsed = parser.parseFromString(comparisonMessage, 'text/html');
     Array.from(parsed.body.childNodes).forEach(node => body.appendChild(node));
     panel.appendChild(body);
 
@@ -2175,10 +1928,15 @@ function insertComparisonTable(shop, comparisonMessage, retryCount = 0, summary 
     // Trigger button
     const btn = document.createElement('div');
     btn.style.cssText = 'background:#f2994b;color:white;border-radius:28px;padding:10px 18px;cursor:grab;box-shadow:0 4px 16px rgba(0,0,0,.2);font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;user-select:none;white-space:nowrap;';
+    const dragGrip = document.createElement('span');
+    dragGrip.textContent = '⠿';
+    dragGrip.title = 'Træk for at flytte';
+    dragGrip.style.cssText = 'opacity:0.5;font-size:15px;margin-right:-2px;';
     const btnIcon = document.createElement('span');
     btnIcon.textContent = '🔍';
     const btnLabel = document.createElement('span');
     btnLabel.textContent = summary || 'Vis prissammenligning';
+    btn.appendChild(dragGrip);
     btn.appendChild(btnIcon);
     btn.appendChild(btnLabel);
 
@@ -2226,8 +1984,8 @@ function insertComparisonTable(shop, comparisonMessage, retryCount = 0, summary 
     widget.appendChild(btn);
     document.body.appendChild(widget);
 
-    // Restore open/closed state — default open so user sees results immediately
-    panel.style.display = sessionStorage.getItem('pp-open') === 'false' ? 'none' : 'block';
+    // Restore open/closed state — open if GTIN found and user hasn't closed it
+    panel.style.display = (startOpen && sessionStorage.getItem('pp-open') !== 'false') ? 'block' : 'none';
 
     PriceTracker.attachTrackingHandlers();
     initializeToggleFunctionality();
@@ -2235,42 +1993,6 @@ function insertComparisonTable(shop, comparisonMessage, retryCount = 0, summary 
 
 
 
-/* function insertPriceComparison(comparisonMessage, retryCount = 0) {
-    const maxRetries = 5;
-    const retryDelay = 1000;
-
-    if (document.querySelector('.price-comparison-table')) {
-        return;
-    }
-    // Don't show the table if it's the "no barcode" message
-    if (comparisonMessage.includes('Vi kunne ikke finde en stegkode eller varenummer for dette produkt')) {
-
-        return;
-    }
-    const mpnElement = document.querySelector('[itemprop="mpn"]') || 
-                       document.querySelector('[itemprop="sku"]') || 
-                       document.querySelector('.product-id.site-text-xs') || 
-                       document.querySelector('h1');
-
-    if (!mpnElement && retryCount < maxRetries) {
-        setTimeout(() => {
-            insertPriceComparison(comparisonMessage, retryCount + 1);
-        }, retryDelay);
-        return;
-    }
-    const comparisonDiv = document.createElement('div');
-    comparisonDiv.classList.add('price-comparison-table');
-    comparisonDiv.innerHTML = comparisonMessage;
-    comparisonDiv.style.marginTop = '10px';
-    comparisonDiv.style.padding = '10px';
-    comparisonDiv.style.border = '1px solid #ccc';
-    if (mpnElement) {
-        mpnElement.parentNode.insertBefore(comparisonDiv, mpnElement.nextSibling);
-    } else {
-        document.body.insertBefore(comparisonDiv, document.body.firstChild);
-    }
-    PriceTracker.attachTrackingHandlers();
-} */
 
 
 function setupMutationObserver() {
@@ -2323,7 +2045,7 @@ new MutationObserver(() => {
 }).observe(document.querySelector('body'), {subtree: true, childList: true});
 
 function handleNavigation() {
-
+    isUpdating = false;
     gtinSearchAttempts = 0;
     cachedGTIN = null;
     lastCartPayload = null;
@@ -2335,24 +2057,10 @@ function handleNavigation() {
 // Initial run
 handleNavigation();
 
-/* // Listen for URL changes
-let lastUrl = location.href;
-new MutationObserver(() => {
-    const url = location.href;
-    if (url !== lastUrl) {
-        lastUrl = url;
-        handleNavigation();
-    }
-}).observe(document.querySelector('body'), {subtree: true, childList: true}); */
-
 // Standard navigation events
 window.addEventListener('pushstate', handleNavigation);
 window.addEventListener('replacestate', handleNavigation);
 window.addEventListener('popstate', handleNavigation);
-
-/* // Additional events that might indicate page changes
-window.addEventListener('load', handleNavigation);
-document.addEventListener('DOMContentLoaded', handleNavigation); */
 
 // Add URL change detection through History API override
 const pushState = history.pushState;

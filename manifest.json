@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "PedalPricer",
-  "version": "1.9.1",
+  "version": "1.9.2",
   "description": "Compare bike part prices across multiple stores.",
   "permissions": [
     "activeTab",
@@ -15,8 +15,7 @@
     "https://*.bikable.se/*",
     "https://*.bike-components.de/*",
     "https://jrgrafisk.dk/*",
-    "https://*.allbike.dk/*",
-    "https://*.cykelpartner.dk/*",
+"https://*.cykelpartner.dk/*",
 	"https://*.r2-bike.com/*",
 	"https://*.cykelexperten.dk/*",
 	"https://*.alltricks.com/*",

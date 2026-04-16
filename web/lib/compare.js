@@ -73,7 +73,14 @@ function parseCSSPrice(html, shop) {
         const raw = el.is('meta') ? el.attr('content') : el.text().trim();
         if (!raw) continue;
 
-        const cleaned = raw.replace(/[^0-9.,]/g, '').replace(',', '.');
+        let cleaned = raw.replace(/[^0-9.,]/g, '');
+        // European format: comma is decimal separator (e.g. "1.299,95" → 1299.95)
+        if (/,\d{2}(?:\s|$|[^0-9])/.test(cleaned)) {
+            cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+        } else {
+            // English format: strip thousand-separator commas (e.g. "1,299.95" → 1299.95)
+            cleaned = cleaned.replace(/,/g, '');
+        }
         const price = parseFloat(cleaned);
         if (isNaN(price) || price <= 0) continue;
 
@@ -253,9 +260,24 @@ async function fetchShopPrice(shop, gtin) {
 }
 
 async function compareByGTIN(gtin) {
-    const raw = await Promise.all(SHOPS.map(shop => fetchShopPrice(shop, gtin)));
-    const results = raw.filter(r => r.result).map(r => r.result).sort((a, b) => a.dkkPrice - b.dkkPrice);
-    const shopStatus = Object.fromEntries(raw.map(r => [r.shop, r.status]));
+    const MAX_TOTAL_MS = 12_000;
+    const deadline = new Promise(resolve => setTimeout(() => resolve([]), MAX_TOTAL_MS));
+
+    const raw = await Promise.race([
+        Promise.allSettled(SHOPS.map(shop => fetchShopPrice(shop, gtin))),
+        deadline
+    ]);
+
+    const settled = Array.isArray(raw) ? raw : [];
+    const results = settled
+        .filter(r => r.status === 'fulfilled' && r.value.result)
+        .map(r => r.value.result)
+        .sort((a, b) => a.dkkPrice - b.dkkPrice);
+    const shopStatus = Object.fromEntries(
+        settled
+            .filter(r => r.status === 'fulfilled')
+            .map(r => [r.value.shop, r.value.status])
+    );
     return { results, shopStatus };
 }
 
