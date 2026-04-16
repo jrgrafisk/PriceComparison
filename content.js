@@ -1,61 +1,27 @@
 /* content.js */
-// Disable all console.log statements
- // const originalConsoleLog = console.log; // Store the original console.log function
-// console.log = function() {}; // Override console.log with a no-op function
 
-// To re-enable logging later, you can restore the original function
-// console.log = originalConsoleLog; // Uncomment this line to restore logging
-
-
-
-
-// Now you can use the globally available config objects
-
-
-
-// Add shop filtering support - SINGLE DECLARATION
 let enabledShops = {};
-
-// Timeout
 let timeout;
-
-// URL tracking
 let lastUrl = location.href;
-
-// Update state tracking
 let isUpdating = false;
 
-// Get initial enabled shops state
 browser.storage.sync.get('enabledShops').then(data => {
     enabledShops = data.enabledShops || {};
 });
 
-// Add message listener for shop updates
 browser.runtime.onMessage.addListener((message) => {
     if (message.action === 'shopsUpdated') {
         enabledShops = message.enabledShops;
-        // Re-run price comparison with new shop settings
         findAndComparePrice();
     }
 });
 
-// Store referrer on page load
 if (document.referrer) {
     sessionStorage.setItem('lastReferrer', document.referrer);
 }
 
-// Reuse parser instance
+// Shared DOMParser instance — reused throughout
 const parser = new DOMParser();
-
-// Cache selectors
-const selectorCache = new Map();
-
-function getCachedSelector(selector) {
-    if (!selectorCache.has(selector)) {
-        selectorCache.set(selector, document.querySelector(selector));
-    }
-    return selectorCache.get(selector);
-}
 
 // Single initialization flag
 let isInitialized = false;
@@ -131,31 +97,14 @@ function getCurrencyCodeFromSymbol(symbol) {
 
 
 
-let gtinFound = false;
-let priceFound = false;
-let productData = {
-    gtin: null,
-    price: null,
-    mpn: null
-};
 let processedGTINs = new Map();
 let observer = null;
-let currentUrl = window.location.href;
 const EUR_TO_DKK_RATE = 7.45;
-const EUR_TO_GBP_RATE = 0.86;
-const EUR_TO_USD_RATE = 1.08;
 
 let gtinSearchAttempts = 0;
 const MAX_GTIN_SEARCH_ATTEMPTS = 2;
-let cachedGTIN = null;  // Add this at the top with other global variables
+let cachedGTIN = null;
 let lastCartPayload = null;
-
-// Get current site information
-let { price: currentPrice, currency: currentCurrency } = getCurrentPriceAndCurrency();
-
-
-/* // Convert to EUR for comparison
-const currentPriceEUR = currentCurrency === 'EUR' ? currentPrice : currentPrice / EUR_TO_DKK_RATE; */
 
 const convertEurToDkk = (priceInEur) => priceInEur * EUR_TO_DKK_RATE;
 const convertDkkToEur = (priceInDkk) => priceInDkk / EUR_TO_DKK_RATE;
@@ -252,7 +201,7 @@ function normalizePriceToEUR(price, currency) {
 }
 
 function extractInertiaPrice(html, shop) {
-    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const doc = parser.parseFromString(html, 'text/html');
     const appEl = doc.querySelector('[data-page]');
     if (!appEl) return null;
 
@@ -276,7 +225,7 @@ function extractInertiaPrice(html, shop) {
 }
 
 function extractDataPropsPrice(html, shop) {
-    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const doc = parser.parseFromString(html, 'text/html');
     const { selector, attribute, productPaths, priceField } = shop.dataProps;
     const el = doc.querySelector(selector);
     if (!el) return null;
@@ -296,7 +245,7 @@ function extractDataPropsPrice(html, shop) {
 
 function extractNextDataPrice(html, shop) {
     if (!shop.nextData) return null;
-    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const doc = parser.parseFromString(html, 'text/html');
     const el = doc.querySelector('script#__NEXT_DATA__');
     if (!el) return null;
     let data;
@@ -315,7 +264,7 @@ function extractNextDataPrice(html, shop) {
 }
 
 function extractJSONLDPrice(html, gtin) {
-    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const doc = parser.parseFromString(html, 'text/html');
     const scripts = doc.querySelectorAll('script[type="application/ld+json"]');
     for (const script of scripts) {
         try {
@@ -372,7 +321,7 @@ function displayPrice(responses, identifier, identifierType) {
             } else if (shop.scriptExtract) {
                 let searchHtml = response.html;
                 if (shop.scriptExtract.container) {
-                    const doc = new DOMParser().parseFromString(response.html, 'text/html');
+                    const doc = parser.parseFromString(response.html, 'text/html');
                     const container = doc.querySelector(shop.scriptExtract.container);
                     if (!container) return null; // container configured but not present = no results
                     searchHtml = Array.from(container.querySelectorAll('script'))
@@ -387,7 +336,7 @@ function displayPrice(responses, identifier, identifierType) {
                 }
                 priceText = extracted;
             } else {
-                const doc = new DOMParser().parseFromString(response.html, 'text/html');
+                const doc = parser.parseFromString(response.html, 'text/html');
                 const priceElement = doc.querySelector(shop.priceSelector);
                 if (priceElement) {
                     // Handle both text elements and <meta content="..."> elements
@@ -404,16 +353,6 @@ function displayPrice(responses, identifier, identifierType) {
             const { price, currency: detectedCurrency } = extractPriceAndCurrency(priceText);
             const currency = detectedCurrency || shop.defaultCurrency || 'EUR';
             if (!price) return null;
-
-/*             const validation = validatePrice(
-                price,
-                currentPriceInfo.price,
-                currency,
-                currentPriceInfo.currency,
-                { debugLog: true }
-            ); */
-
-/*             if (!validation.isValid) return null; */
 
             // Validation: reject if price is >60% lower than current page price (likely wrong match)
             const priceInDkk = currency === 'DKK' ? price : price * EXCHANGE_RATES.EUR_TO_DKK;
@@ -689,140 +628,6 @@ function extractPriceAndCurrency(priceText) {
     return { price: numericPrice, currency };
 }
 
-/* 
-function validatePrice(sourcePrice, targetPrice, sourceCurrency = 'EUR', targetCurrency = 'EUR', options = {}) {
-    const {
-        lowerThreshold = 0.2,  // Price can't be 80% lower
-        upperThreshold = 1.8,  // Price can't be 80% higher
-        debugLog = true
-    } = options;
-
-    // First, ensure we have valid numeric prices
-    let sourcePriceNum = parseFloat(sourcePrice);
-    let targetPriceNum = parseFloat(targetPrice);
-
-    // Guard clauses for invalid inputs
-    if (isNaN(sourcePriceNum) || isNaN(targetPriceNum)) {
-        return {
-            isValid: false,
-            reason: 'INVALID_PRICES',
-            details: { sourcePrice, targetPrice }
-        };
-    }
-
-    // Convert both prices to EUR for comparison
-    const sourcePriceEUR = normalizePriceToEUR(sourcePriceNum, sourceCurrency);
-    const targetPriceEUR = normalizePriceToEUR(targetPriceNum, targetCurrency);
-
-    if (sourcePriceEUR === null || targetPriceEUR === null) {
-        return {
-            isValid: false,
-            reason: 'CURRENCY_CONVERSION_FAILED',
-            details: { sourcePriceEUR, targetPriceEUR }
-        };
-    }
-
-    // Calculate thresholds
-    const minimumPrice = Number(targetPriceEUR) * lowerThreshold;
-    const maximumPrice = Number(targetPriceEUR) * upperThreshold;
-
-    // Ensure all values are numbers before using toFixed
-    const sourcePriceEURNum = Number(sourcePriceEUR);
-    const targetPriceEURNum = Number(targetPriceEUR);
-    const minimumPriceNum = Number(minimumPrice);
-    const maximumPriceNum = Number(maximumPrice);
-
-    // Perform validation
-    const isTooLow = sourcePriceEURNum < minimumPriceNum;
-    const isTooHigh = sourcePriceEURNum > maximumPriceNum;
-    const isValid = !isTooLow && !isTooHigh;
-
-    return {
-        isValid,
-        reason: isValid ? 'VALID' : (isTooLow ? 'TOO_LOW' : 'TOO_HIGH'),
-        details: {
-            sourcePriceEUR: sourcePriceEURNum.toFixed(2),
-            targetPriceEUR: targetPriceEURNum.toFixed(2),
-            minimumPrice: minimumPriceNum.toFixed(2),
-            maximumPrice: maximumPriceNum.toFixed(2),
-            difference: ((sourcePriceEURNum - targetPriceEURNum) / targetPriceEURNum * 100).toFixed(2) + '%'
-        }
-    };
-} */
-
-/* function findGTINFromJSONLD() {
-
-	try {
-        const scripts = Array.from(document.querySelectorAll('script[type="application/ld+json"]'));
-        for (const script of scripts) {
-            try {
-                const parsedData = JSON.parse(script.textContent);
-                // Normalize to an array if it's not already one
-                const dataArray = Array.isArray(parsedData) ? parsedData : [parsedData];
-                
-
-                
-                // Iterate through each item in the array
-                for (const data of dataArray) {
-                    // Case 1: ProductGroup with variants
-                    if (data['@type'] === 'ProductGroup' && data.hasVariant) {
-                        const variants = Array.isArray(data.hasVariant) ? data.hasVariant : [data.hasVariant];
-                        for (const variant of variants) {
-                            if (variant.offers) {
-                                // Normalize offers to an array
-                                const offers = Array.isArray(variant.offers) ? variant.offers : [variant.offers];
-                                for (const offer of offers) {
-                                    if (offer.gtin) {
-
-                                        productInfo.gtin.push({
-                                            value: offer.gtin,
-                                            source: 'JSON-LD Product Variant Offer',
-                                            url: window.location.href
-                                        });
-                                        return offer.gtin;
-                                    } else {
-
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Case 2: Single Product schema
-                    if (data['@type'] === 'Product') {
-                        if (data.gtin) {
-
-                            productInfo.gtin.push({
-                                value: data.gtin,
-                                source: 'JSON-LD Product',
-                                url: window.location.href
-                            });
-                            return data.gtin;
-                        }
-                    }
-                }
-                
-                // Fallback: Search for 13-digit numbers in the JSON-LD data
-                const jsonString = JSON.stringify(dataArray);
-                const regex = /\b\d{13}\b/g; // Matches 13-digit numbers
-                const matches = jsonString.match(regex);
-                if (matches && matches.length > 0) {
-                    productInfo.gtin.push({
-                        value: matches[0],
-                        source: 'Fallback 13-digit number',
-                        url: window.location.href
-                    });
-                    return matches[0];
-                }
-            } catch (e) {
-
-            }
-        }
-    } catch (e) {
-
-    }
-    return null;
-} */
 
 function findGTIN() {
     // Return cached GTIN if we already found one
@@ -1223,57 +1028,6 @@ function generateTrackingId() {
            Math.random().toString(36).substring(2, 15);
 }
 
-/* function findMPN() {
-    const mpnSelectors = [
-        '[itemprop="mpn"]',
-        '[itemprop="sku"]',
-        '.product-id',
-        'span[itemprop="productID"]',  // Refined selector for product ID
-        '.netz-ean',  // Bike-Discount specific
-        '[data-ean]'
-    ];
-
-    // Loop through selectors
-    for (const selector of mpnSelectors) {
-        const mpnElement = document.querySelector(selector);
-        if (mpnElement) {
-            // Log the HTML content of the found MPN element (only for debugging)
-
-
-            // Retrieve MPN value from text content, content attribute, or data-ean attribute
-            const mpnValue = mpnElement.textContent.trim() || 
-                             mpnElement.getAttribute('content') || 
-                             mpnElement.getAttribute('data-ean');
-                             
-            // Log found MPN value
-
-            
-            // Return the value if it's not empty
-            if (mpnValue) return mpnValue; 
-        }
-    }
-
-    // If no MPN found, log and return null
-
-    return null;
-} */
-
-/* function extractProductData() {
-    const gtin = findGTIN(); // Prioritize GTIN
-
-    if (gtin) {
-
-    } else {
-
-        const mpn = findMPN(); // Only check MPN if GTIN is not available
-
-        if (mpn) {
-
-        } else {
-
-        }
-    }
-} */
 
 
 function checkIdentifiers() {
@@ -1360,46 +1114,6 @@ function findProductName() {
 
 
 
-/* function findMPN() {
-    // Try to get the MPN (Sku) from the <span itemprop="sku">
-    const mpn = document.querySelector('[itemprop="sku"]');
-    if (mpn) {
-        const mpnValue = mpn.textContent.trim();
-        if (mpnValue) {
-
-            return mpnValue;
-        } else {
-
-        }
-    }
-
-    // Fallback: Try additional selectors if MPN is No match in the primary selector
-    const fallbackSelectors = [
-        '.product-id', 
-        '[data-sku]', 
-        '.netz-ean',  // Bike-Discount specific
-        'span[itemprop="productID"]'
-    ];
-
-    for (const selector of fallbackSelectors) {
-        const fallbackMPN = document.querySelector(selector);
-        if (fallbackMPN) {
-            const fallbackMPNValue = fallbackMPN.textContent.trim() || 
-                                      fallbackMPN.getAttribute('content') || 
-                                      fallbackMPN.getAttribute('data-ean');
-            if (fallbackMPNValue) {
-
-                return fallbackMPNValue;
-            } else {
-
-            }
-        }
-    }
-
-    // If no MPN is found, return null
-
-    return null;
-} */
 
 
 function validateGTIN(gtin) {
@@ -1866,12 +1580,12 @@ function updateTableSafely(newHTML) {
     }
     const contentArea = document.querySelector('.pp-panel-content');
     if (contentArea) {
-        const parsed = new DOMParser().parseFromString(newHTML, 'text/html');
+        const parsed = parser.parseFromString(newHTML, 'text/html');
         contentArea.replaceChildren(...Array.from(parsed.body.childNodes));
     } else {
         const tableContainer = document.querySelector('.price-comparison-table');
         if (tableContainer) {
-            const parsed = new DOMParser().parseFromString(newHTML, 'text/html');
+            const parsed = parser.parseFromString(newHTML, 'text/html');
             tableContainer.replaceChildren(...Array.from(parsed.body.childNodes));
         } else {
             insertComparisonTable(null, newHTML);
@@ -2022,7 +1736,7 @@ function insertComparisonTable(shop, comparisonMessage, retryCount = 0, summary 
     const body = document.createElement('div');
     body.className = 'pp-panel-content';
     body.style.cssText = 'overflow-y:auto;max-height:60vh;padding:12px 16px;';
-    const parsed = new DOMParser().parseFromString(comparisonMessage, 'text/html');
+    const parsed = parser.parseFromString(comparisonMessage, 'text/html');
     Array.from(parsed.body.childNodes).forEach(node => body.appendChild(node));
     panel.appendChild(body);
 
@@ -2263,42 +1977,6 @@ function insertComparisonTable(shop, comparisonMessage, retryCount = 0, summary 
 
 
 
-/* function insertPriceComparison(comparisonMessage, retryCount = 0) {
-    const maxRetries = 5;
-    const retryDelay = 1000;
-
-    if (document.querySelector('.price-comparison-table')) {
-        return;
-    }
-    // Don't show the table if it's the "no barcode" message
-    if (comparisonMessage.includes('Vi kunne ikke finde en stegkode eller varenummer for dette produkt')) {
-
-        return;
-    }
-    const mpnElement = document.querySelector('[itemprop="mpn"]') || 
-                       document.querySelector('[itemprop="sku"]') || 
-                       document.querySelector('.product-id.site-text-xs') || 
-                       document.querySelector('h1');
-
-    if (!mpnElement && retryCount < maxRetries) {
-        setTimeout(() => {
-            insertPriceComparison(comparisonMessage, retryCount + 1);
-        }, retryDelay);
-        return;
-    }
-    const comparisonDiv = document.createElement('div');
-    comparisonDiv.classList.add('price-comparison-table');
-    comparisonDiv.innerHTML = comparisonMessage;
-    comparisonDiv.style.marginTop = '10px';
-    comparisonDiv.style.padding = '10px';
-    comparisonDiv.style.border = '1px solid #ccc';
-    if (mpnElement) {
-        mpnElement.parentNode.insertBefore(comparisonDiv, mpnElement.nextSibling);
-    } else {
-        document.body.insertBefore(comparisonDiv, document.body.firstChild);
-    }
-    PriceTracker.attachTrackingHandlers();
-} */
 
 
 function setupMutationObserver() {
@@ -2351,7 +2029,7 @@ new MutationObserver(() => {
 }).observe(document.querySelector('body'), {subtree: true, childList: true});
 
 function handleNavigation() {
-
+    isUpdating = false;
     gtinSearchAttempts = 0;
     cachedGTIN = null;
     lastCartPayload = null;
@@ -2363,24 +2041,10 @@ function handleNavigation() {
 // Initial run
 handleNavigation();
 
-/* // Listen for URL changes
-let lastUrl = location.href;
-new MutationObserver(() => {
-    const url = location.href;
-    if (url !== lastUrl) {
-        lastUrl = url;
-        handleNavigation();
-    }
-}).observe(document.querySelector('body'), {subtree: true, childList: true}); */
-
 // Standard navigation events
 window.addEventListener('pushstate', handleNavigation);
 window.addEventListener('replacestate', handleNavigation);
 window.addEventListener('popstate', handleNavigation);
-
-/* // Additional events that might indicate page changes
-window.addEventListener('load', handleNavigation);
-document.addEventListener('DOMContentLoaded', handleNavigation); */
 
 // Add URL change detection through History API override
 const pushState = history.pushState;

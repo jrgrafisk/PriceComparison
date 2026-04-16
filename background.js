@@ -1,31 +1,37 @@
 // background.js
+
+function isSafeShopUrl(url) {
+    try {
+        const { protocol, hostname } = new URL(url);
+        if (protocol !== 'https:' && protocol !== 'http:') return false;
+        return SHOPS.some(shop => hostname.endsWith(shop.domain));
+    } catch { return false; }
+}
+
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Handle GetRuleList request
     if (message === "GetRuleList") {
-        sendResponse([{}]); // Send empty rules object for now
-        return true;  // Keep the message channel open
+        sendResponse([{}]);
+        return true;
     }
-    
+
     // Handle GetTabUrl request
     if (message === "GetTabUrl") {
-        if (sender.tab) {
-            sendResponse(sender.tab.url);
-        }
+        if (sender.tab) sendResponse(sender.tab.url);
         return true;
     }
 
     // Handle findPrice action
     if (message.action === 'findPrice') {
-        fetch(message.url)
+        if (!isSafeShopUrl(message.url)) {
+            sendResponse({ html: null, url: message.url });
+            return true;
+        }
+        fetch(message.url, { signal: AbortSignal.timeout(10000) })
             .then(response => response.text())
-            .then(html => {
-                sendResponse({ html, url: message.url });
-            })
-            .catch(error => {
-
-                sendResponse({ html: null, url: message.url });
-            });
-        return true; // Keep the message channel open for async response
+            .then(html => sendResponse({ html, url: message.url }))
+            .catch(() => sendResponse({ html: null, url: message.url }));
+        return true;
     }
 
     // Handle badge update from content script
@@ -40,24 +46,21 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     // Handle openTabs action (from cart widget in content script)
     if (message.action === 'openTabs') {
-        const urls = message.urls || [];
-        urls.forEach((url, i) => {
-            browser.tabs.create({ url, active: i === urls.length - 1 });
+        const safeUrls = (message.urls || []).filter(isSafeShopUrl);
+        safeUrls.forEach((url, i) => {
+            browser.tabs.create({ url, active: i === safeUrls.length - 1 });
         });
         return false;
     }
 
-    // Handle shopsUpdated action
+    // Handle shopsUpdated action — broadcast to all tabs
     if (message.action === 'shopsUpdated') {
-        // Broadcast to all tabs
         browser.tabs.query({}).then(tabs => {
             tabs.forEach(tab => {
                 browser.tabs.sendMessage(tab.id, {
                     action: 'shopsUpdated',
                     enabledShops: message.enabledShops
-                }).catch(() => {
-                    // Ignore errors for tabs that can't receive messages
-                });
+                }).catch(() => {});
             });
         });
     }
@@ -66,12 +69,8 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // Initialize storage for enabled shops (all enabled by default)
 browser.storage.sync.get("enabledShops").then(data => {
     if (!data.enabledShops) {
-        // Set default enabled shops using SHOPS array
         const defaultEnabledShops = {};
-        SHOPS.forEach(shop => {
-            defaultEnabledShops[shop.domain] = true;
-        });
+        SHOPS.forEach(shop => { defaultEnabledShops[shop.domain] = true; });
         browser.storage.sync.set({ enabledShops: defaultEnabledShops });
     }
-
 });
