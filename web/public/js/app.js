@@ -40,7 +40,7 @@ async function runSearch(query) {
         // Track search
         if (typeof umami !== 'undefined') {
             umami.track('search', {
-                query: query.startsWith('http') ? 'url' : query,
+                query: query,
                 results: data.results?.length ?? 0,
                 gtin: data.gtin
             });
