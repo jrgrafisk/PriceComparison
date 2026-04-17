@@ -2,16 +2,25 @@ const cheerio = require('cheerio');
 const { SHOPS } = require('../../config.js');
 
 const GTIN_SELECTORS = [
-    { sel: '[itemprop="gtin13"]',        attr: 'content' },
-    { sel: '[itemprop="gtin"]',          attr: 'content' },
+    { sel: '[itemprop="gtin13"]',         attr: 'content' },
+    { sel: '[itemprop="gtin"]',           attr: 'content' },
     { sel: 'meta[property="product:ean"]', attr: 'content' },
-    { sel: '[data-ean]',                 attr: 'data-ean' },
-    { sel: '[data-gtin]',               attr: 'data-gtin' },
-    { sel: '.netz-ean',                  attr: null },
+    { sel: '[data-ean]',                  attr: 'data-ean' },
+    { sel: '[data-gtin]',                 attr: 'data-gtin' },
+    { sel: '.netz-ean',                   attr: null },
 ];
 
 function isValidGTIN(val) {
     return val && /^\d{8,14}$/.test(val.trim());
+}
+
+// Only allow URLs from known shop domains — prevents SSRF
+function isAllowedShopUrl(url) {
+    try {
+        const { protocol, hostname } = new URL(url);
+        if (protocol !== 'https:' && protocol !== 'http:') return false;
+        return SHOPS.some(s => hostname === s.domain || hostname.endsWith('.' + s.domain));
+    } catch { return false; }
 }
 
 function findGTINInObject(obj, depth = 0) {
@@ -62,6 +71,9 @@ function extractGTINFromHTML(html) {
 }
 
 async function extractGTINFromURL(url) {
+    // Reject URLs not on a known shop domain — prevents SSRF
+    if (!isAllowedShopUrl(url)) return null;
+
     // 1. Try fetching the product URL directly
     try {
         const res = await fetch(url, {
