@@ -53,70 +53,114 @@ async function runSearch(query) {
 }
 
 function showLoading() {
-    resultsEl.innerHTML = `
-        <div class="loading-box">
-            <span class="spinner"></span>
-            <span class="loading-title">Henter priser...</span>
-        </div>
-    `;
+    const box = document.createElement('div');
+    box.className = 'loading-box';
+
+    const spinner = document.createElement('span');
+    spinner.className = 'spinner';
+
+    const label = document.createElement('span');
+    label.className = 'loading-title';
+    label.textContent = 'Henter priser...';
+
+    box.appendChild(spinner);
+    box.appendChild(label);
+    resultsEl.replaceChildren(box);
 }
 
 function showResults(data) {
+    resultsEl.replaceChildren();
+
     if (!data.results || data.results.length === 0) {
-        resultsEl.innerHTML = `
-            <div class="msg-box">
-                Ingen priser fundet for stregkode <strong>${data.gtin}</strong>.
-                Produktet er muligvis ikke tilgængeligt i de understøttede butikker.
-            </div>
-        `;
+        const box = document.createElement('div');
+        box.className = 'msg-box';
+        box.textContent = 'Ingen priser fundet for stregkode ';
+        const strong = document.createElement('strong');
+        strong.textContent = data.gtin;
+        box.appendChild(strong);
+        box.appendChild(document.createTextNode('. Produktet er muligvis ikke tilgængeligt i de understøttede butikker.'));
+        resultsEl.appendChild(box);
         return;
     }
 
-    const cards = data.results.map((r, i) => {
+    const meta = document.createElement('p');
+    meta.className = 'result-gtin';
+    meta.textContent = 'Stregkode: ';
+    const gtinSpan = document.createElement('span');
+    gtinSpan.textContent = data.gtin;
+    const countText = ` · ${data.results.length} butik${data.results.length !== 1 ? 'ker' : ''} fundet`;
+    meta.appendChild(gtinSpan);
+    meta.appendChild(document.createTextNode(countText));
+    resultsEl.appendChild(meta);
+
+    data.results.forEach((r, i) => {
         const isCheapest = i === 0;
-        return `
-            <div class="result-card ${isCheapest ? 'cheapest' : ''}">
-                <div class="result-shop">
-                    ${r.shop}
-                    ${isCheapest ? '<span class="result-badge">Billigst</span>' : ''}
-                </div>
-                <div class="result-right">
-                    <div class="result-price">${r.priceText}</div>
-                    <a class="result-link" href="${r.url}" target="_blank" rel="noopener"
-                       data-shop="${r.shop}" data-price="${r.dkk}" data-rank="${i + 1}">
-                        Besøg →
-                    </a>
-                </div>
-            </div>
-        `;
-    }).join('');
+        const card = document.createElement('div');
+        card.className = 'result-card' + (isCheapest ? ' cheapest' : '');
 
-    const statusLabels = { timeout: 'timeout', 'http-403': 'blokeret', 'http-429': 'rate-limit', 'no-match': 'ikke fundet', error: 'fejl', 'extension-only': 'kun extension' };
-    const failed = data.shopStatus
-        ? Object.entries(data.shopStatus).filter(([, s]) => s !== 'ok').map(([name, s]) => `${name} (${statusLabels[s] || s})`).join(', ')
-        : '';
+        const shopEl = document.createElement('div');
+        shopEl.className = 'result-shop';
+        shopEl.textContent = r.shop;
+        if (isCheapest) {
+            const badge = document.createElement('span');
+            badge.className = 'result-badge';
+            badge.textContent = 'Billigst';
+            shopEl.appendChild(badge);
+        }
 
-    resultsEl.innerHTML = `
-        <p class="result-gtin">Stregkode: <span>${data.gtin}</span> · ${data.results.length} butik${data.results.length !== 1 ? 'ker' : ''} fundet</p>
-        ${cards}
-        ${failed ? `<p style="font-size:11px;color:#bbb;margin-top:12px;">Ikke tilgængelig på webversionen: ${failed}</p>` : ''}
-    `;
+        const right = document.createElement('div');
+        right.className = 'result-right';
 
-    // Track shop clicks
-    if (typeof umami !== 'undefined') {
-        resultsEl.querySelectorAll('.result-link').forEach(link => {
+        const priceEl = document.createElement('div');
+        priceEl.className = 'result-price';
+        priceEl.textContent = r.priceText;
+
+        const link = document.createElement('a');
+        link.className = 'result-link';
+        link.href = r.url;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        link.dataset.shop = r.shop;
+        link.dataset.price = r.dkkPrice;
+        link.dataset.rank = i + 1;
+        link.textContent = 'Besøg →';
+
+        if (typeof umami !== 'undefined') {
             link.addEventListener('click', () => {
                 umami.track('click-shop', {
-                    shop: link.dataset.shop,
-                    price: parseInt(link.dataset.price),
-                    rank: parseInt(link.dataset.rank),
+                    shop: r.shop,
+                    price: r.dkkPrice,
+                    rank: i + 1,
                     gtin: data.gtin
                 });
             });
-        });
+        }
+
+        right.appendChild(priceEl);
+        right.appendChild(link);
+        card.appendChild(shopEl);
+        card.appendChild(right);
+        resultsEl.appendChild(card);
+    });
+
+    const statusLabels = { timeout: 'timeout', 'http-403': 'blokeret', 'http-429': 'rate-limit', 'no-match': 'ikke fundet', error: 'fejl', 'extension-only': 'kun extension' };
+    if (data.shopStatus) {
+        const failed = Object.entries(data.shopStatus)
+            .filter(([, s]) => s !== 'ok')
+            .map(([name, s]) => `${name} (${statusLabels[s] || s})`)
+            .join(', ');
+        if (failed) {
+            const note = document.createElement('p');
+            note.style.cssText = 'font-size:11px;color:#bbb;margin-top:12px;';
+            note.textContent = `Ikke tilgængelig på webversionen: ${failed}`;
+            resultsEl.appendChild(note);
+        }
     }
 }
 
 function showError(msg) {
-    resultsEl.innerHTML = `<div class="msg-box error">${msg}</div>`;
+    const box = document.createElement('div');
+    box.className = 'msg-box error';
+    box.textContent = msg;
+    resultsEl.replaceChildren(box);
 }

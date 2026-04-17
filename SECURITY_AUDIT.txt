@@ -1,0 +1,357 @@
+================================================================================
+PedalPricer — Security Audit
+Date: 2026-04-16
+Scope: Full codebase (browser extension + web tool at pedalpricer.cc)
+================================================================================
+
+SUMMARY
+-------
+1 HIGH, 3 MEDIUM, 4 LOW, 3 INFO findings. The most urgent issue is an
+unrestricted server-side fetch (SSRF) in the /api/compare endpoint —
+an attacker can make pedalpricer.cc's server fetch arbitrary internal
+or external URLs. All other findings are hardening opportunities.
+
+================================================================================
+FINDINGS (ranked by severity)
+================================================================================
+
+[SEVERITY: HIGH] Server-Side Request Forgery (SSRF) in /api/compare
+------------------------------------------------------------------
+Location: web/lib/gtinExtract.js:64-77  (called from web/server.js:51)
+
+Description:
+    The /api/compare endpoint accepts any input starting with "http" and
+    passes it directly to extractGTINFromURL(), which does:
+        const res = await fetch(url, { ... });
+    There is NO allowlist of shop domains on the PRIMARY fetch path
+    (only the fallback at line 80 uses `SHOPS.find(s => url.includes(s.domain))`).
+
+Impact:
+    An unauthenticated attacker can make the server fetch arbitrary URLs:
+    - Internal network probing (http://localhost:*, http://10.*, http://172.16-31.*,
+      http://192.168.*) — map internal services, admin panels, DBs.
+    - Cloud metadata services:
+        http://169.254.169.254/latest/meta-data/ (AWS)
+        http://metadata.google.internal/ (GCP)
+        → leaks IAM credentials if running on a cloud VM.
+    - Use pedalpricer.cc as an anonymous HTTP proxy to mask attack traffic
+      against third parties.
+    - Port scanning via timing differences.
+    Response bodies are parsed with cheerio, but status codes and
+    timeouts still leak information.
+
+Recommendation:
+    At the very top of extractGTINFromURL (or in server.js before the call),
+    enforce a domain allowlist identical to what the extension uses:
+
+        function isAllowedShopUrl(url) {
+            try {
+                const { protocol, hostname } = new URL(url);
+                if (protocol !== 'https:' && protocol !== 'http:') return false;
+                return SHOPS.some(s => hostname === s.domain ||
+                                       hostname.endsWith('.' + s.domain));
+            } catch { return false; }
+        }
+
+    Reject with 400 before any fetch if the URL is not in the allowlist.
+    Additionally: disable redirects (fetch default follows them — an
+    allowed shop could 302 to an internal URL), e.g. fetch(url, { redirect: 'error' })
+    or manually inspect Location headers.
+
+---
+
+[SEVERITY: MEDIUM] Rate limiter trivially bypassable behind a proxy
+--------------------------------------------------------------------
+Location: web/server.js:28-39
+
+Description:
+    `req.ip` returns the socket's remote address. If pedalpricer.cc sits
+    behind Cloudflare, nginx, a load balancer, or Heroku/Vercel/etc,
+    `req.ip` will be the proxy's IP for every request — making the
+    rate limiter effectively global (all users share one bucket of 20/min).
+    Express does NOT trust X-Forwarded-For by default; `app.set('trust proxy', ...)`
+    is not configured.
+
+Impact:
+    - If behind proxy without trust proxy → any single user triggers
+      rate limit for all users (DoS).
+    - If `app.set('trust proxy', true)` is naively added → attackers can
+      spoof X-Forwarded-For and bypass the limiter entirely.
+
+Recommendation:
+    Explicitly set `app.set('trust proxy', 1)` (or a specific CIDR) matching
+    your actual proxy hops. Document this in the README. Verify with a test
+    that `req.ip` changes per client IP behind the production proxy.
+    Consider express-rate-limit — it handles this correctly out of the box.
+
+---
+
+[SEVERITY: MEDIUM] No CORS policy on /api/compare (CSRF-able)
+--------------------------------------------------------------
+Location: web/server.js:41 (no CORS middleware configured)
+
+Description:
+    /api/compare accepts POST from any Origin. There is no CORS header
+    set and no CSRF token. Any webpage can submit a `fetch('/api/compare', ...)`
+    on behalf of a visiting user (same public IP → counts against that
+    user's rate limit; in combination with the HIGH SSRF finding, an
+    attacker's website can drive SSRF attacks using a victim's IP).
+
+Impact:
+    - Rate-limit exhaustion by drive-by from any site the user visits.
+    - Combined with SSRF: attacker's page probes internal networks
+      while the victim visits; pedalpricer.cc logs the victim's IP as
+      the origin of the attack.
+    - The endpoint only returns public price data, so data leakage
+      itself is minor; the abuse vector is the server-side fetch.
+
+Recommendation:
+    Add a CORS middleware that only allows Origin: https://pedalpricer.cc
+    (and localhost during dev). Or require a simple origin header check
+    before processing. Example:
+
+        app.post('/api/compare', (req, res, next) => {
+            const origin = req.headers.origin;
+            if (origin && !['https://pedalpricer.cc', 'http://localhost:3000'].includes(origin)) {
+                return res.status(403).json({ error: 'forbidden' });
+            }
+            next();
+        }, rateLimit, ...);
+
+---
+
+[SEVERITY: MEDIUM] No Content-Security-Policy, X-Frame-Options or related headers
+----------------------------------------------------------------------------------
+Location: web/server.js (no security headers middleware)
+
+Description:
+    Express serves index.html without any security headers. Any XSS
+    vulnerability (current or future — see LOW finding below) can
+    freely exfiltrate data, load arbitrary scripts, or make the page
+    cross-domain fetches.
+
+Impact:
+    Defence-in-depth missing. If an innerHTML bug is introduced later,
+    CSP would stop script execution cold — today, nothing does.
+
+Recommendation:
+    Add `helmet` middleware or set headers manually:
+
+        app.use((req, res, next) => {
+            res.setHeader('Content-Security-Policy',
+                "default-src 'self'; script-src 'self' 'unsafe-inline' https://analytics.jrgrafisk.dk; " +
+                "img-src 'self' https://jrgrafisk.dk data:; " +
+                "media-src https://jrgrafisk.dk; " +
+                "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+                "font-src https://fonts.gstatic.com; " +
+                "connect-src 'self' https://analytics.jrgrafisk.dk;");
+            res.setHeader('X-Content-Type-Options', 'nosniff');
+            res.setHeader('X-Frame-Options', 'DENY');
+            res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+            next();
+        });
+
+---
+
+[SEVERITY: LOW] innerHTML used with server-provided fields in frontend
+-----------------------------------------------------------------------
+Location: web/public/js/app.js:55-103 (showLoading/showResults/showError)
+
+Description:
+    Results rendered via `resultsEl.innerHTML = `...${r.shop}...${r.priceText}
+    ...${r.url}...${data.gtin}...``. Today all of these are server-generated:
+    - r.shop: from SHOPS config — trusted
+    - r.priceText: constructed as `${price.toFixed(2)} €` — numeric + literal, safe
+    - r.url: `buildUrl()` uses encodeURIComponent(gtin) — safe
+    - r.dkkPrice: number from Math.round
+    - data.gtin: regex-validated `/^\d{8,14}$/`
+    - data.error: server-side hard-coded strings
+
+Impact:
+    None today. But this is fragile — a future change that adds a
+    scraped product name or a shop-provided message into the result
+    object would become a reflected XSS instantly.
+
+Recommendation:
+    Rewrite showResults to build nodes with createElement/textContent
+    (like popup.js already does correctly). At minimum, escape every
+    interpolation with a helper:
+
+        const esc = s => String(s).replace(/[&<>"']/g, c =>
+            ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+---
+
+[SEVERITY: LOW] popup.js opens cart URLs without validation
+------------------------------------------------------------
+Location: popup.js:80-83
+
+Description:
+    `const urls = cart.map(item => (item.prices || []).find(...)?.url)`
+    then `browser.tabs.create({ url: urls[i], ... })` with no validation.
+    Cart items are written to `browser.storage.local` by content.js;
+    content.js runs on `*://*/*` (every site the user visits).
+
+Impact:
+    If an attacker finds any way to write to storage.local (a separate
+    vulnerability, a malicious extension, a bug in content.js), they
+    could stage arbitrary URLs (including `javascript:` which Firefox
+    blocks for tabs.create but Chrome historically accepts in certain
+    flows) to be opened next time the user clicks "Åbn alle".
+
+Recommendation:
+    Apply the same isSafeShopUrl() guard from background.js inside
+    popup.js before calling browser.tabs.create. Filter out anything
+    not on an allowed shop domain.
+
+---
+
+[SEVERITY: LOW] Tab URL silently sent to external endpoint on button click
+---------------------------------------------------------------------------
+Location: popup.js:233-248
+
+Description:
+    "Anmod om tilføjelse af {hostname}" sends the full current tab URL
+    (including query strings, which may contain session tokens, search
+    terms, PII) to https://jrgrafisk.dk/php-endpoint.php.
+
+Impact:
+    Privacy: a user clicking the button may not realize the full URL
+    (not just hostname) is transmitted. Query strings on banking,
+    healthcare, email preview pages can contain sensitive state.
+
+Recommendation:
+    Send only the hostname (or origin), never the full URL. If the full
+    URL is truly needed, show a confirmation dialog displaying exactly
+    what will be sent.
+
+---
+
+[SEVERITY: LOW] Extension User-Agent spoofing on outgoing fetches
+------------------------------------------------------------------
+Location: web/lib/compare.js:192-203, web/lib/gtinExtract.js:30-32,
+          background.js:30
+
+Description:
+    The server and extension send a Chrome User-Agent string. This is
+    widely understood practice for scrapers but it does mean shop sites
+    cannot easily distinguish PedalPricer traffic from browser traffic
+    to apply rate-limits/blocklists specifically.
+
+Impact:
+    Ethical concern more than a security hole: the tool cannot be
+    blocked without blocking real browsers. If abused at scale this
+    could harm the shops and attract legal attention.
+
+Recommendation:
+    Include an identifying token in the UA, e.g.
+    `User-Agent: ... PedalPricer/1.9.2 (+https://pedalpricer.cc/bot)`
+    so shop operators can allow/deny or rate-limit cleanly. This is
+    good-citizen behaviour.
+
+---
+
+[SEVERITY: INFO] Content script runs on all sites (*://*/*)
+------------------------------------------------------------
+Location: manifest.json:37, manifest_chrome.json content_scripts
+
+Description:
+    The content script (content.js + config.js) loads on every webpage
+    the user visits. While functionally required (it compares prices
+    wherever the user shops), this means:
+    - Any bug in content.js is a vulnerability that runs on banking
+      sites, webmail, internal corporate apps, etc.
+    - Reviewers at Mozilla/Chrome Web Store may scrutinize this.
+
+Impact:
+    Expanded attack surface. Today content.js only READS document.body.innerHTML
+    (line 435) and creates DOM via createElement/textContent — no obvious
+    injection points. But any future change that does `el.innerHTML = scraped`
+    would affect every visited site.
+
+Recommendation:
+    Long-term: consider restricting matches to only supported shop
+    domains in the manifest (as the chrome-manifest-v3 branch already
+    tried). This breaks the "works everywhere" UX but drastically
+    reduces blast radius.
+
+---
+
+[SEVERITY: INFO] Analytics script loaded after explicit consent
+----------------------------------------------------------------
+Location: web/public/index.html:195-213
+
+Description:
+    Umami analytics is only loaded if the user clicks "OK" on the
+    consent banner. Declined users never load the script.
+
+Impact:
+    Positive — GDPR-friendly implementation.
+
+Recommendation:
+    None. Keep as is. Note: `DIN_WEBSITE_ID` on line 188 appears to be
+    a placeholder — if this is live code, replace with the real ID.
+
+---
+
+[SEVERITY: INFO] Extension permissions are minimal
+----------------------------------------------------
+Location: manifest.json:6-27, manifest_chrome.json
+
+Description:
+    Permissions: activeTab, tabs, storage, plus explicit host
+    permissions for each supported shop. No webRequest, no cookies,
+    no history, no clipboard — all good.
+
+Impact:
+    Positive — principle of least privilege respected.
+
+Recommendation:
+    None.
+
+---
+
+================================================================================
+WHAT'S DONE WELL
+================================================================================
+
++ background.js URL validation (isSafeShopUrl) before fetch and tabs.create.
++ Rate limiter at all (even if proxy-sensitive).
++ GTIN input validation with a tight regex /^\d{8,14}$/.
++ express.json({ limit: '10kb' }) — prevents JSON body DoS.
++ AbortSignal.timeout on every outgoing fetch.
++ Promise.allSettled + global 12s deadline in compare.js — resilient
+  to one hanging shop.
++ Consent banner + opt-in analytics.
++ No hardcoded secrets or API keys found.
++ popup.js builds DOM with createElement/textContent, not innerHTML.
++ content.js uses createElement throughout.
++ No eval(), no Function() constructor, no document.write anywhere.
++ No prototype-pollution vectors (findGTINInObject only reads, never
+  writes to unknown keys).
+
+================================================================================
+PRIORITIZED ACTION LIST
+================================================================================
+
+Do now (HIGH):
+  1. Add shop-domain allowlist to gtinExtract.js primary fetch path.
+     This closes the SSRF.
+
+Do this week (MEDIUM):
+  2. Configure `app.set('trust proxy', 1)` matching your production setup.
+  3. Add CORS restriction on /api/compare (or Origin check).
+  4. Add CSP + security headers via helmet.
+
+Do this month (LOW):
+  5. Replace innerHTML in app.js with DOM builders / escaping helper.
+  6. Validate URLs in popup.js before tabs.create.
+  7. Trim tab URL to origin-only in site-request feature.
+
+Consider long-term (INFO):
+  8. Narrow content script matches to supported shop domains.
+  9. Add identifying User-Agent token.
+
+================================================================================
+END OF REPORT
+================================================================================

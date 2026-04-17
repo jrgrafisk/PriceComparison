@@ -77,7 +77,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             openBtn.textContent = `Åbn alle hos ${best[0]} →`;
             openBtn.style.cssText = 'width:100%;margin-top:8px;padding:6px 10px;border:none;border-radius:5px;background:#f2994b;color:#fff;font-size:12px;font-weight:600;cursor:pointer;';
             openBtn.addEventListener('click', async () => {
-                const urls = cart.map(item => (item.prices || []).find(p => p.shop === best[0])?.url).filter(Boolean);
+                const rawUrls = cart.map(item => (item.prices || []).find(p => p.shop === best[0])?.url).filter(Boolean);
+                const urls = rawUrls.filter(u => { try { const p = new URL(u).protocol; return p === 'https:' || p === 'http:'; } catch { return false; } });
                 for (let i = 0; i < urls.length; i++) {
                     await browser.tabs.create({ url: urls[i], active: i === urls.length - 1 });
                 }
@@ -242,7 +243,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     action: 'siteRequest',
-                    url: siteUrl,
+                    url: new URL(siteUrl).origin,
                     timestamp: new Date().toISOString()
                 })
             });

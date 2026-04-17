@@ -4,7 +4,29 @@ const { compareByGTIN } = require('./lib/compare');
 const { extractGTINFromURL } = require('./lib/gtinExtract');
 
 const app = express();
+
+// Trust one proxy hop (nginx/Cloudflare) so req.ip is the real client IP
+app.set('trust proxy', 1);
+
 app.use(express.json({ limit: '10kb' }));
+
+// Security headers
+app.use((req, res, next) => {
+    res.setHeader('Content-Security-Policy',
+        "default-src 'self'; " +
+        "script-src 'self' 'unsafe-inline' https://analytics.jrgrafisk.dk; " +
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+        "font-src https://fonts.gstatic.com; " +
+        "img-src 'self' https://jrgrafisk.dk data:; " +
+        "media-src https://jrgrafisk.dk; " +
+        "connect-src 'self' https://analytics.jrgrafisk.dk;"
+    );
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    next();
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Support + privacy page — also reachable at /support+privacy (add-on store link format)
@@ -12,6 +34,17 @@ const supportPage = path.join(__dirname, 'public', 'support.html');
 app.get('/support', (req, res) => res.sendFile(supportPage));
 app.get('/support+privacy', (req, res) => res.sendFile(supportPage));
 app.get('/privacy', (req, res) => res.sendFile(supportPage));
+
+// CORS — only allow requests from pedalpricer.cc itself
+const ALLOWED_ORIGINS = new Set(['https://pedalpricer.cc', 'https://www.pedalpricer.cc']);
+function corsCheck(req, res, next) {
+    const origin = req.headers.origin;
+    if (origin && !ALLOWED_ORIGINS.has(origin)) {
+        return res.status(403).json({ error: 'Forbidden' });
+    }
+    if (origin) res.setHeader('Access-Control-Allow-Origin', origin);
+    next();
+}
 
 // Simple in-memory rate limiter — 20 requests per minute per IP
 const rateLimiter = new Map();
@@ -38,7 +71,7 @@ function rateLimit(req, res, next) {
     next();
 }
 
-app.post('/api/compare', rateLimit, async (req, res) => {
+app.post('/api/compare', corsCheck, rateLimit, async (req, res) => {
     try {
         const { input } = req.body;
         if (!input || !input.trim()) {
