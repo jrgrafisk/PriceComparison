@@ -184,12 +184,6 @@
 
         // Hero: put Chrome button first
         ff.parentNode.insertBefore(ch, ff);
-    } else if (isFirefox) {
-        // Already the default — just ensure Chrome nav button stays hidden
-        document.getElementById('nav-btn-chrome').style.display = 'none';
-    } else {
-        // Unknown browser: show both nav buttons
-        document.getElementById('nav-btn-chrome').style.display = '';
     }
 })();
 </script>

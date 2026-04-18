@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PedalPricer",
-  "version": "1.90.2",
+  "version": "1.90.3",
   "description": "Compare bike part prices across multiple stores.",
   "permissions": [
     "activeTab",
@@ -33,7 +33,7 @@
   "content_scripts": [
     {
       "matches": ["*://*/*"],
-      "js": ["browser_polyfill.js", "config.js", "content.js"]
+      "js": ["config.js", "content.js"]
     }
   ],
   "icons": {

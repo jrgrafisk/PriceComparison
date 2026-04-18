@@ -5,9 +5,12 @@ OUTDIR=$(mktemp -d)
 VERSION=$(node -e "const m=require('./manifest_chrome.json');console.log(m.version)")
 
 # Copy extension files
-cp browser_polyfill.js config.js content.js popup.html popup.js "$OUTDIR/"
+cp config.js content.js popup.html popup.js "$OUTDIR/"
 cp manifest_chrome.json "$OUTDIR/manifest.json"
 cp -r icons "$OUTDIR/"
+
+# Replace browser.* with chrome.* in content and popup scripts
+sed -i 's/browser\./chrome\./g' "$OUTDIR/content.js" "$OUTDIR/popup.js"
 
 # Build background_sw.js: config.js is loaded via importScripts,
 # then a shim maps browser.* to chrome.* (MV3 uses chrome.action, not chrome.browserAction)
