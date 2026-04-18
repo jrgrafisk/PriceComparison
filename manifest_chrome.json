@@ -33,7 +33,7 @@
   "content_scripts": [
     {
       "matches": ["*://*/*"],
-      "js": ["browser_polyfill.js", "config.js", "content.js"]
+      "js": ["config.js", "content.js"]
     }
   ],
   "icons": {
