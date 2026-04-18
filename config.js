@@ -235,7 +235,7 @@ if (typeof module !== 'undefined' && module.exports) {
         EXCHANGE_RATES,
         PRODUCT_INFO_TEMPLATE
     };
-} else {
+} else if (typeof window !== 'undefined') {
     window.SHOPS = SHOPS;
     window.EXCHANGE_RATES = EXCHANGE_RATES;
     window.PRODUCT_INFO_TEMPLATE = PRODUCT_INFO_TEMPLATE;
