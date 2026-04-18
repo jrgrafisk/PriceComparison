@@ -428,3 +428,9 @@ footer {
 
     .result-card { flex-wrap: wrap; }
 }
+
+.amo-section { padding: 32px 24px; border-top: 1px solid var(--border); background: var(--bg-alt); }
+.amo-inner { max-width: 800px; margin: 0 auto; }
+.amo-heading { font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.05em; }
+.amo-item { display: flex; justify-content: space-between; font-size: 13px; padding: 6px 0; border-bottom: 1px solid var(--border); gap: 16px; }
+.amo-date { color: var(--text-light); white-space: nowrap; }
