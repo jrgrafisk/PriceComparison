@@ -161,22 +161,19 @@ function showResults(data) {
 fetch('/api/rss')
     .then(r => r.ok ? r.json() : null)
     .then(d => {
-        if (!d?.items?.length) return;
-        const section = document.getElementById('amo-section');
+        if (!d?.version) return;
         const el = document.getElementById('amo-feed');
-        d.items.forEach(item => {
-            const row = document.createElement('div');
-            row.className = 'amo-item';
-            const title = document.createElement('span');
-            title.textContent = item.title;
-            const date = document.createElement('span');
-            date.className = 'amo-date';
-            date.textContent = item.date ? new Date(item.date).toLocaleDateString('da-DK') : '';
-            row.appendChild(title);
-            row.appendChild(date);
-            el.appendChild(row);
-        });
-        section.style.display = '';
+        const row = document.createElement('div');
+        row.className = 'amo-item';
+        const title = document.createElement('span');
+        title.textContent = `Version ${d.version} · Godkendt af Mozilla`;
+        const date = document.createElement('span');
+        date.className = 'amo-date';
+        date.textContent = d.updated ? new Date(d.updated).toLocaleDateString('da-DK') : '';
+        row.appendChild(title);
+        row.appendChild(date);
+        el.appendChild(row);
+        document.getElementById('amo-section').style.display = '';
     })
     .catch(() => {});
 
