@@ -158,6 +158,28 @@ function showResults(data) {
     }
 }
 
+fetch('/api/rss')
+    .then(r => r.ok ? r.json() : null)
+    .then(d => {
+        if (!d?.items?.length) return;
+        const section = document.getElementById('amo-section');
+        const el = document.getElementById('amo-feed');
+        d.items.forEach(item => {
+            const row = document.createElement('div');
+            row.className = 'amo-item';
+            const title = document.createElement('span');
+            title.textContent = item.title;
+            const date = document.createElement('span');
+            date.className = 'amo-date';
+            date.textContent = item.date ? new Date(item.date).toLocaleDateString('da-DK') : '';
+            row.appendChild(title);
+            row.appendChild(date);
+            el.appendChild(row);
+        });
+        section.style.display = '';
+    })
+    .catch(() => {});
+
 function showError(msg) {
     const box = document.createElement('div');
     box.className = 'msg-box error';

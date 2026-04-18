@@ -71,6 +71,42 @@ function rateLimit(req, res, next) {
     next();
 }
 
+let rssCache = null;
+let rssCacheAt = 0;
+const RSS_CACHE_TTL = 60 * 60 * 1000;
+
+app.get('/api/rss', rateLimit, async (req, res) => {
+    const now = Date.now();
+    if (rssCache && now - rssCacheAt < RSS_CACHE_TTL) {
+        return res.json(rssCache);
+    }
+    try {
+        const r = await fetch('https://addons.mozilla.org/en-US/developers/feed', {
+            headers: { 'User-Agent': 'PedalPricer/1.0 (+https://pedalpricer.cc)' },
+            signal: AbortSignal.timeout(5000)
+        });
+        if (!r.ok) throw new Error(`AMO feed ${r.status}`);
+        const xml = await r.text();
+
+        const items = [];
+        const itemRe = /<item>([\s\S]*?)<\/item>/g;
+        const titleRe = /<title>(.*?)<\/title>/;
+        const dateRe = /<pubDate>(.*?)<\/pubDate>/;
+        let m;
+        while ((m = itemRe.exec(xml)) !== null && items.length < 5) {
+            const title = (titleRe.exec(m[1])?.[1] ?? '').trim().replace(/<[^>]*>/g, '');
+            const date = (dateRe.exec(m[1])?.[1] ?? '').trim();
+            if (title) items.push({ title, date });
+        }
+
+        rssCache = { items };
+        rssCacheAt = now;
+        res.json(rssCache);
+    } catch (e) {
+        res.status(502).json({ error: 'Kunne ikke hente feed' });
+    }
+});
+
 app.post('/api/compare', corsCheck, rateLimit, async (req, res) => {
     try {
         const { input } = req.body;
