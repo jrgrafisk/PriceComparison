@@ -27,7 +27,13 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
             sendResponse({ html: null, url: message.url });
             return true;
         }
-        fetch(message.url, { signal: AbortSignal.timeout(10000) })
+        fetch(message.url, {
+            headers: {
+                'Accept-Language': 'da-DK,da;q=0.9,en-US;q=0.8,en;q=0.7',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+            },
+            signal: AbortSignal.timeout(10000)
+        })
             .then(response => response.text())
             .then(html => sendResponse({ html, url: message.url }))
             .catch(() => sendResponse({ html: null, url: message.url }));
