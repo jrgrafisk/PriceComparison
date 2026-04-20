@@ -98,6 +98,25 @@
             return null;
         }
 
+        // Next.js __NEXT_DATA__
+        if (shop.nextData) {
+            const nd = doc.getElementById('__NEXT_DATA__');
+            if (nd) {
+                try {
+                    const json = JSON.parse(nd.textContent);
+                    for (const path of shop.nextData.productPaths) {
+                        const node = path.split('.').reduce((o, k) => o?.[k], json);
+                        const products = Array.isArray(node) ? node : (node ? [node] : []);
+                        for (const p of products) {
+                            const price = parseFloat(shop.nextData.priceField.split('.').reduce((o, k) => o?.[k], p));
+                            if (price > 0) return { price, currency: shop.defaultCurrency || 'EUR' };
+                        }
+                    }
+                } catch {}
+            }
+            return null;
+        }
+
         // CSS selector
         if (shop.priceSelector) {
             for (const sel of shop.priceSelector.split(',').map(s => s.trim())) {
