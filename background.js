@@ -21,8 +21,8 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 
-    // Handle findPrice action
-    if (message.action === 'findPrice') {
+    // Handle findPrice action (desktop) and fetchUrl action (mobile) — same logic
+    if (message.action === 'findPrice' || message.action === 'fetchUrl') {
         if (!isSafeShopUrl(message.url)) {
             sendResponse({ html: null, url: message.url });
             return true;
