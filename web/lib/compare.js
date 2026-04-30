@@ -248,7 +248,7 @@ async function fetchShopPrice(shop, gtin) {
             : priceData.price * EXCHANGE_RATES.EUR_TO_DKK;
 
         return {
-            result: { shop: shop.name, priceText: priceData.priceText, dkkPrice: Math.round(dkkPrice), url },
+            result: { shop: shop.name, priceText: `${Math.round(dkkPrice)} kr.`, dkkPrice: Math.round(dkkPrice), url },
             shop: shop.name,
             status: 'ok'
         };
