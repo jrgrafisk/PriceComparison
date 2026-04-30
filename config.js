@@ -55,6 +55,7 @@ const SHOPS = [
         domain: "bike-components.de",
         tablePosition: ".wrap-price",
         defaultCurrency: "EUR",
+        vatMultiplier: 1.19,
         scriptExtract: {
             price: '"priceRaw":([\\d.]+)'
         }

@@ -227,9 +227,11 @@ async function fetchShopPrice(shop, gtin) {
             priceData = parseJSONLDPrice(html, gtin, shop);
         }
 
-        // Apply VAT multiplier if configured (e.g. bike-components.de returns net prices)
+        // Apply VAT multiplier if configured (bike-components.de returns net/pre-VAT prices)
+        // Snap to nearest x.99 rounding down, matching typical German retail pricing
         if (priceData && shop.vatMultiplier) {
-            priceData.price = priceData.price * shop.vatMultiplier;
+            const gross = priceData.price * shop.vatMultiplier;
+            priceData.price = Math.floor(gross + 0.005) - 0.01;
             priceData.priceText = `${priceData.price.toFixed(2)} €`;
         }
 
