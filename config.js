@@ -54,7 +54,8 @@ const SHOPS = [
         ],
         domain: "bike-components.de",
         tablePosition: ".wrap-price",
-        defaultCurrency: "EUR"
+        defaultCurrency: "EUR",
+        vatMultiplier: 1.19
     },
     {
         name: "Cykelgear",
