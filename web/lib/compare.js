@@ -223,15 +223,12 @@ async function fetchShopPrice(shop, gtin) {
             : parseCSSPrice(html, shop);
 
         // Fallback to JSON-LD when no structured data config and CSS/script finds nothing
-        let usedJSONLD = false;
         if (!priceData && !shop.inertia && !shop.dataProps) {
             priceData = parseJSONLDPrice(html, gtin, shop);
-            usedJSONLD = true;
         }
 
-        // If JSON-LD was used and shop has a VAT multiplier, apply it
-        // (some shops like bike-components.de include net prices in JSON-LD without VAT)
-        if (usedJSONLD && priceData && shop.vatMultiplier) {
+        // Apply VAT multiplier if configured (e.g. bike-components.de returns net prices)
+        if (priceData && shop.vatMultiplier) {
             priceData.price = priceData.price * shop.vatMultiplier;
             priceData.priceText = `${priceData.price.toFixed(2)} €`;
         }
