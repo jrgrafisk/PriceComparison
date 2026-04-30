@@ -24,13 +24,26 @@ function showPrices(html, label) {
     if (found.size === 0) console.log('Price fields: (none)');
     else { console.log('Price fields:'); [...found].slice(0, 15).forEach(f => console.log('  ', f)); }
 
-    // JSON-LD (skip generic WebSite type)
+    // JSON-LD — show Product type in full
     const ldRe = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
     while ((m = ldRe.exec(html)) !== null) {
         try {
             const d = JSON.parse(m[1]);
-            if (d['@type'] !== 'WebSite') console.log('\nJSON-LD:', JSON.stringify(d, null, 2).slice(0, 1000));
+            const types = Array.isArray(d) ? d.map(x => x['@type']) : [d['@type']];
+            if (types.includes('WebSite') || types.includes('BreadcrumbList') || types.includes('FAQPage')) continue;
+            console.log('\nJSON-LD (full):', JSON.stringify(d, null, 2));
         } catch (e) {}
+    }
+
+    // Show context around 6.99 to see which product it belongs to
+    let searchFrom = 0;
+    let found699 = 0;
+    while (found699 < 3) {
+        const idx699 = html.indexOf('"6.99', searchFrom);
+        if (idx699 === -1) break;
+        console.log(`\n--- Context around "6.99" (occurrence ${++found699}) ---`);
+        console.log(html.slice(Math.max(0, idx699 - 150), idx699 + 150));
+        searchFrom = idx699 + 1;
     }
 
     // Context around priceRaw
