@@ -2,83 +2,99 @@
 
 const gtin = process.argv[2] || '8720299066984';
 
-async function fetchHtml(url, lang = 'en-GB,en;q=0.9') {
+async function fetchHtml(url, extraHeaders = {}) {
     const res = await fetch(url, {
         headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': lang,
-            'Cache-Control': 'no-cache'
+            'Accept-Language': 'da-DK,da;q=0.9,en;q=0.8',
+            'Cache-Control': 'no-cache',
+            ...extraHeaders
         },
         signal: AbortSignal.timeout(12000)
     });
     return { ok: res.ok, status: res.status, finalUrl: res.url, html: res.ok ? await res.text() : '' };
 }
 
-function showPrices(html, label) {
-    console.log(`\n--- ${label} ---`);
-    const pattern = /["']?price(?:Raw|Gross|Net|Brutto|Netto|WithVat|InclVat|ExclVat|Final|Display|Formatted|Current|Regular|Sale|Brut)?["']?\s*[:=]\s*["']?([€\d.,]+)/gi;
-    const found = new Set();
-    let m;
-    while ((m = pattern.exec(html)) !== null) found.add(m[0].slice(0, 80));
-    if (found.size === 0) console.log('Price fields: (none)');
-    else { console.log('Price fields:'); [...found].slice(0, 15).forEach(f => console.log('  ', f)); }
-
-    // JSON-LD — show Product type in full
-    const ldRe = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
-    while ((m = ldRe.exec(html)) !== null) {
-        try {
-            const d = JSON.parse(m[1]);
-            const types = Array.isArray(d) ? d.map(x => x['@type']) : [d['@type']];
-            if (types.includes('WebSite') || types.includes('BreadcrumbList') || types.includes('FAQPage')) continue;
-            console.log('\nJSON-LD (full):', JSON.stringify(d, null, 2));
-        } catch (e) {}
-    }
-
-    // Show context around 6.99 to see which product it belongs to
-    let searchFrom = 0;
-    let found699 = 0;
-    while (found699 < 3) {
-        const idx699 = html.indexOf('"6.99', searchFrom);
-        if (idx699 === -1) break;
-        console.log(`\n--- Context around "6.99" (occurrence ${++found699}) ---`);
-        console.log(html.slice(Math.max(0, idx699 - 150), idx699 + 150));
-        searchFrom = idx699 + 1;
-    }
-
-    // Context around priceRaw
-    const idx = html.indexOf('"priceRaw"');
-    if (idx !== -1) {
-        console.log('\nContext around priceRaw:');
-        console.log(html.slice(Math.max(0, idx - 200), idx + 200));
-    }
+async function fetchJson(url, extraHeaders = {}) {
+    const res = await fetch(url, {
+        headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Language': 'da-DK,da;q=0.9,en;q=0.8',
+            'X-Requested-With': 'XMLHttpRequest',
+            ...extraHeaders
+        },
+        signal: AbortSignal.timeout(10000)
+    });
+    if (!res.ok) return { status: res.status, data: null };
+    try { return { status: res.status, data: await res.json() }; }
+    catch (e) { const t = await res.text(); return { status: res.status, data: null, text: t.slice(0, 300) }; }
 }
 
 async function probe(gtin) {
+    // Step 1: Get search page and extract product link + product ID
     const searchUrl = 'https://www.bike-components.de/en/s/?keywords=' + encodeURIComponent(gtin);
     console.log('=== SEARCH PAGE ===\nURL:', searchUrl);
-    const search = await fetchHtml(searchUrl, 'en-GB,en;q=0.9');
-    console.log('Status:', search.status, '| Length:', search.html.length);
-    showPrices(search.html, 'Search page');
+    const search = await fetchHtml(searchUrl);
+    console.log('Status:', search.status);
 
-    // Extract product link — \/ are literal backslash+slash in the embedded JSON
     const linkMatch = search.html.match(new RegExp('"link":"(\\\\/en\\\\/[^"]+)"'));
-    if (!linkMatch) {
-        console.log('\nNo product link matched — check pattern');
-        return;
-    }
-    const productPath = linkMatch[1].split('\\/').join('/');
+    const idMatch = search.html.match(/"productId":(\d+)/);
+    const productId = idMatch?.[1];
+    const productPath = linkMatch ? linkMatch[1].split('\\/').join('/') : null;
+    console.log('Product ID:', productId);
+    console.log('Product path:', productPath);
+
+    if (!productPath || !productId) { console.log('Could not extract product info'); return; }
+
     const productUrl = 'https://www.bike-components.de' + productPath;
 
-    console.log('\n=== PRODUCT PAGE (EN headers) ===\nURL:', productUrl);
-    const prodEN = await fetchHtml(productUrl, 'en-GB,en;q=0.9');
-    console.log('Status:', prodEN.status, '| Length:', prodEN.html.length);
-    showPrices(prodEN.html, 'Product EN');
+    // Step 2: Fetch product page and look for API endpoint patterns
+    console.log('\n=== PRODUCT PAGE ===\nURL:', productUrl);
+    const prod = await fetchHtml(productUrl, { 'Referer': searchUrl });
+    console.log('Status:', prod.status);
 
-    console.log('\n=== PRODUCT PAGE (DE headers) ===');
-    const prodDE = await fetchHtml(productUrl, 'de-DE,de;q=0.9');
-    console.log('Status:', prodDE.status, '| Length:', prodDE.html.length);
-    showPrices(prodDE.html, 'Product DE');
+    // Find API endpoint patterns in JS bundles referenced from the page
+    const jsUrls = [...prod.html.matchAll(/src="([^"]+\.js[^"]*)"/g)].map(m => m[1]);
+    console.log('\nJS bundles found:', jsUrls.length);
+
+    // Look for price-fetching API patterns in the HTML itself
+    console.log('\n=== API PATTERNS IN HTML ===');
+    const apiPatterns = [
+        /["'](\/[a-z/]+(?:price|product|variant|stock)[^"']*?)["']/gi,
+        /["'](\/en\/Ajax[^"']*?)["']/gi,
+        /["'](\/api\/[^"']*?)["']/gi,
+        /fetch\(["']([^"']+)["']/g,
+        /axios[.(]["']([^"']+)["']/g
+    ];
+    const apiFound = new Set();
+    for (const p of apiPatterns) {
+        let m;
+        while ((m = p.exec(prod.html)) !== null) apiFound.add(m[1]);
+    }
+    if (apiFound.size === 0) console.log('(none found in HTML)');
+    else [...apiFound].forEach(u => console.log(' ', u));
+
+    // Step 3: Try common price API patterns for this site
+    console.log('\n=== TRYING PRICE API ENDPOINTS ===');
+    const candidates = [
+        `https://www.bike-components.de/en/Ajax/getProductData/?productId=${productId}`,
+        `https://www.bike-components.de/api/products/${productId}/price`,
+        `https://www.bike-components.de/en/Ajax/getPrice/?id=${productId}`,
+        `https://www.bike-components.de/api/v1/products/${productId}`,
+    ];
+    for (const url of candidates) {
+        const r = await fetchJson(url);
+        console.log(`${url}\n  → status ${r.status}`, r.data ? JSON.stringify(r.data).slice(0, 200) : r.text || '');
+    }
+
+    // Step 4: Current priceRaw on product page
+    const rawIdx = prod.html.indexOf('"priceRaw"');
+    if (rawIdx !== -1) {
+        console.log('\n=== PRODUCT PAGE priceRaw CONTEXT ===');
+        console.log(prod.html.slice(Math.max(0, rawIdx - 50), rawIdx + 100));
+    }
 }
 
 probe(gtin).catch(e => { console.error('Error:', e.message); process.exit(1); });
