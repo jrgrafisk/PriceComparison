@@ -15,10 +15,8 @@ async function fetchHtml(url, lang = 'en-GB,en;q=0.9') {
     return { ok: res.ok, status: res.status, finalUrl: res.url, html: res.ok ? await res.text() : '' };
 }
 
-function showPricesAndContext(html, label) {
+function showPrices(html, label) {
     console.log(`\n--- ${label} ---`);
-
-    // All price fields
     const pattern = /["']?price(?:Raw|Gross|Net|Brutto|Netto|WithVat|InclVat|ExclVat|Final|Display|Formatted|Current|Regular|Sale|Brut)?["']?\s*[:=]\s*["']?([€\d.,]+)/gi;
     const found = new Set();
     let m;
@@ -26,56 +24,48 @@ function showPricesAndContext(html, label) {
     if (found.size === 0) console.log('Price fields: (none)');
     else { console.log('Price fields:'); [...found].slice(0, 15).forEach(f => console.log('  ', f)); }
 
-    // JSON-LD
+    // JSON-LD (skip generic WebSite type)
     const ldRe = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
-    let ldCount = 0;
     while ((m = ldRe.exec(html)) !== null) {
-        ldCount++;
         try {
             const d = JSON.parse(m[1]);
-            if (d['@type'] !== 'WebSite') {
-                console.log(`\nJSON-LD block ${ldCount}:`, JSON.stringify(d, null, 2).slice(0, 1000));
-            }
+            if (d['@type'] !== 'WebSite') console.log('\nJSON-LD:', JSON.stringify(d, null, 2).slice(0, 1000));
         } catch (e) {}
     }
-    if (ldCount === 0) console.log('JSON-LD: (none)');
 
     // Context around priceRaw
     const idx = html.indexOf('"priceRaw"');
     if (idx !== -1) {
         console.log('\nContext around priceRaw:');
-        console.log(html.slice(Math.max(0, idx - 300), idx + 300));
+        console.log(html.slice(Math.max(0, idx - 200), idx + 200));
     }
 }
 
 async function probe(gtin) {
-    // Step 1: Search page with EN headers
     const searchUrl = 'https://www.bike-components.de/en/s/?keywords=' + encodeURIComponent(gtin);
-    console.log('=== SEARCH PAGE (EN) ===');
-    console.log('URL:', searchUrl);
-    const searchEN = await fetchHtml(searchUrl, 'en-GB,en;q=0.9');
-    console.log('Status:', searchEN.status, '| Length:', searchEN.html.length);
-    showPricesAndContext(searchEN.html, 'Search EN');
+    console.log('=== SEARCH PAGE ===\nURL:', searchUrl);
+    const search = await fetchHtml(searchUrl, 'en-GB,en;q=0.9');
+    console.log('Status:', search.status, '| Length:', search.html.length);
+    showPrices(search.html, 'Search page');
 
-    // Extract product link from embedded JSON
-    const linkMatch = searchEN.html.match(/"link":"(\/en\/[^"]+)"/);
+    // Extract product link — escaped slashes (\/) in embedded JSON
+    const linkMatch = search.html.match(/"link":"(\\/en\\/[^"]+)"/);
     if (!linkMatch) {
-        console.log('\nNo product link found in search HTML — Vue renders links client-side');
+        console.log('\nNo product link matched — check pattern');
         return;
     }
-    const productUrl = 'https://www.bike-components.de' + linkMatch[1].replace(/\\/g, '');
-    console.log('\n=== PRODUCT PAGE ===');
-    console.log('URL:', productUrl);
+    const productPath = linkMatch[1].replace(/\\\//g, '/');
+    const productUrl = 'https://www.bike-components.de' + productPath;
 
-    // Step 2: Fetch product page with EN headers
+    console.log('\n=== PRODUCT PAGE (EN headers) ===\nURL:', productUrl);
     const prodEN = await fetchHtml(productUrl, 'en-GB,en;q=0.9');
-    console.log('Status (EN):', prodEN.status, '| Length:', prodEN.html.length);
-    showPricesAndContext(prodEN.html, 'Product page EN');
+    console.log('Status:', prodEN.status, '| Length:', prodEN.html.length);
+    showPrices(prodEN.html, 'Product EN');
 
-    // Step 3: Fetch same product page with DE headers to compare
+    console.log('\n=== PRODUCT PAGE (DE headers) ===');
     const prodDE = await fetchHtml(productUrl, 'de-DE,de;q=0.9');
-    console.log('\nStatus (DE):', prodDE.status, '| Length:', prodDE.html.length);
-    showPricesAndContext(prodDE.html, 'Product page DE');
+    console.log('Status:', prodDE.status, '| Length:', prodDE.html.length);
+    showPrices(prodDE.html, 'Product DE');
 }
 
 probe(gtin).catch(e => { console.error('Error:', e.message); process.exit(1); });
