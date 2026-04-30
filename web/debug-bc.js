@@ -48,13 +48,13 @@ async function probe(gtin) {
     console.log('Status:', search.status, '| Length:', search.html.length);
     showPrices(search.html, 'Search page');
 
-    // Extract product link — escaped slashes (\/) in embedded JSON
-    const linkMatch = search.html.match(/"link":"(\\/en\\/[^"]+)"/);
+    // Extract product link — \/ are literal backslash+slash in the embedded JSON
+    const linkMatch = search.html.match(new RegExp('"link":"(\\\\/en\\\\/[^"]+)"'));
     if (!linkMatch) {
         console.log('\nNo product link matched — check pattern');
         return;
     }
-    const productPath = linkMatch[1].replace(/\\\//g, '/');
+    const productPath = linkMatch[1].split('\\/').join('/');
     const productUrl = 'https://www.bike-components.de' + productPath;
 
     console.log('\n=== PRODUCT PAGE (EN headers) ===\nURL:', productUrl);
