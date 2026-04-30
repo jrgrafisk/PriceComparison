@@ -1,88 +1,81 @@
 // Diagnostic script — run on OVH: node web/debug-bc.js [gtin]
 
 const gtin = process.argv[2] || '8720299066984';
-const HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-    'Accept-Language': 'en-GB,en;q=0.9',
-    'Cache-Control': 'no-cache'
-};
 
-function extractPrices(html, label) {
-    console.log(`\n=== PRICE PATTERNS IN ${label} ===`);
-    const found = new Set();
-    const pattern = /["']?price(?:Raw|Gross|Net|Brutto|Netto|WithVat|InclVat|ExclVat|Final|Display|Formatted|Current|Regular|Sale|Brut)?["']?\s*[:=]\s*["']?([\d.]+)/gi;
-    let m;
-    while ((m = pattern.exec(html)) !== null) found.add(m[0].slice(0, 80));
-    if (found.size === 0) console.log('(none)');
-    else [...found].slice(0, 20).forEach(f => console.log(' ', f));
-}
-
-function extractJSONLD(html, label) {
-    console.log(`\n=== JSON-LD IN ${label} ===`);
-    const re = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
-    let m, count = 0;
-    while ((m = re.exec(html)) !== null) {
-        count++;
-        try {
-            const d = JSON.parse(m[1]);
-            console.log(`Block ${count}:`, JSON.stringify(d, null, 2).slice(0, 800));
-        } catch (e) { console.log(`Block ${count}: parse error`); }
-    }
-    if (count === 0) console.log('(none)');
-}
-
-async function fetchHtml(url) {
-    const res = await fetch(url, { headers: HEADERS, signal: AbortSignal.timeout(12000) });
+async function fetchHtml(url, lang = 'en-GB,en;q=0.9') {
+    const res = await fetch(url, {
+        headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': lang,
+            'Cache-Control': 'no-cache'
+        },
+        signal: AbortSignal.timeout(12000)
+    });
     return { ok: res.ok, status: res.status, finalUrl: res.url, html: res.ok ? await res.text() : '' };
 }
 
-async function probe(gtin) {
-    // 1. Fetch search page
-    const searchUrl = 'https://www.bike-components.de/en/s/?keywords=' + encodeURIComponent(gtin);
-    console.log('=== STEP 1: SEARCH PAGE ===');
-    console.log('URL:', searchUrl);
-    const search = await fetchHtml(searchUrl);
-    console.log('Status:', search.status, '| Length:', search.html.length);
+function showPricesAndContext(html, label) {
+    console.log(`\n--- ${label} ---`);
 
-    extractPrices(search.html, 'SEARCH PAGE');
-    extractJSONLD(search.html, 'SEARCH PAGE');
+    // All price fields
+    const pattern = /["']?price(?:Raw|Gross|Net|Brutto|Netto|WithVat|InclVat|ExclVat|Final|Display|Formatted|Current|Regular|Sale|Brut)?["']?\s*[:=]\s*["']?([€\d.,]+)/gi;
+    const found = new Set();
+    let m;
+    while ((m = pattern.exec(html)) !== null) found.add(m[0].slice(0, 80));
+    if (found.size === 0) console.log('Price fields: (none)');
+    else { console.log('Price fields:'); [...found].slice(0, 15).forEach(f => console.log('  ', f)); }
 
-    // 2. Extract product page URLs from search results
-    const productLinks = [...search.html.matchAll(/href="(\/en\/p\/[^"]+)"/g)]
-        .map(m => 'https://www.bike-components.de' + m[1]);
-    const uniqueLinks = [...new Set(productLinks)];
-    console.log('\n=== PRODUCT LINKS FOUND IN SEARCH ===');
-    if (uniqueLinks.length === 0) {
-        console.log('(none found — Vue renders these client-side)');
-    } else {
-        uniqueLinks.slice(0, 3).forEach(l => console.log(' ', l));
+    // JSON-LD
+    const ldRe = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+    let ldCount = 0;
+    while ((m = ldRe.exec(html)) !== null) {
+        ldCount++;
+        try {
+            const d = JSON.parse(m[1]);
+            if (d['@type'] !== 'WebSite') {
+                console.log(`\nJSON-LD block ${ldCount}:`, JSON.stringify(d, null, 2).slice(0, 1000));
+            }
+        } catch (e) {}
     }
+    if (ldCount === 0) console.log('JSON-LD: (none)');
 
-    // 3. If we found product links, fetch the first one
-    if (uniqueLinks.length > 0) {
-        console.log('\n=== STEP 2: PRODUCT PAGE ===');
-        console.log('URL:', uniqueLinks[0]);
-        const product = await fetchHtml(uniqueLinks[0]);
-        console.log('Status:', product.status, '| Length:', product.html.length);
-
-        extractPrices(product.html, 'PRODUCT PAGE');
-        extractJSONLD(product.html, 'PRODUCT PAGE');
-    } else {
-        // 4. Try a known product URL pattern as fallback
-        console.log('\n=== STEP 2: TRYING GTIN AS DIRECT SEARCH (no product link found) ===');
-        console.log('The search page is fully Vue-rendered — product links not in SSR HTML.');
-        console.log('Gross price (6.99 EUR) is only available after client-side render.');
-    }
-
-    // 5. Check the context around priceRaw
-    console.log('\n=== CONTEXT AROUND priceRaw ===');
-    const idx = search.html.indexOf('"priceRaw"');
+    // Context around priceRaw
+    const idx = html.indexOf('"priceRaw"');
     if (idx !== -1) {
-        console.log(search.html.slice(Math.max(0, idx - 200), idx + 200));
-    } else {
-        console.log('(not found)');
+        console.log('\nContext around priceRaw:');
+        console.log(html.slice(Math.max(0, idx - 300), idx + 300));
     }
+}
+
+async function probe(gtin) {
+    // Step 1: Search page with EN headers
+    const searchUrl = 'https://www.bike-components.de/en/s/?keywords=' + encodeURIComponent(gtin);
+    console.log('=== SEARCH PAGE (EN) ===');
+    console.log('URL:', searchUrl);
+    const searchEN = await fetchHtml(searchUrl, 'en-GB,en;q=0.9');
+    console.log('Status:', searchEN.status, '| Length:', searchEN.html.length);
+    showPricesAndContext(searchEN.html, 'Search EN');
+
+    // Extract product link from embedded JSON
+    const linkMatch = searchEN.html.match(/"link":"(\/en\/[^"]+)"/);
+    if (!linkMatch) {
+        console.log('\nNo product link found in search HTML — Vue renders links client-side');
+        return;
+    }
+    const productUrl = 'https://www.bike-components.de' + linkMatch[1].replace(/\\/g, '');
+    console.log('\n=== PRODUCT PAGE ===');
+    console.log('URL:', productUrl);
+
+    // Step 2: Fetch product page with EN headers
+    const prodEN = await fetchHtml(productUrl, 'en-GB,en;q=0.9');
+    console.log('Status (EN):', prodEN.status, '| Length:', prodEN.html.length);
+    showPricesAndContext(prodEN.html, 'Product page EN');
+
+    // Step 3: Fetch same product page with DE headers to compare
+    const prodDE = await fetchHtml(productUrl, 'de-DE,de;q=0.9');
+    console.log('\nStatus (DE):', prodDE.status, '| Length:', prodDE.html.length);
+    showPricesAndContext(prodDE.html, 'Product page DE');
 }
 
 probe(gtin).catch(e => { console.error('Error:', e.message); process.exit(1); });
