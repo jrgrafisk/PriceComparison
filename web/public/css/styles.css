@@ -365,6 +365,19 @@ nav {
 
 .msg-box.error { border-color: #fca5a5; color: #dc2626; background: #fff5f5; }
 
+/* ── SHARE ROW ── */
+.share-row {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 16px;
+}
+
+.share-btn {
+    font-size: 13px;
+    padding: 6px 14px;
+    gap: 6px;
+}
+
 /* ── FEATURES ── */
 .features-section {
     max-width: 1100px;

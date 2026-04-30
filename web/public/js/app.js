@@ -22,6 +22,7 @@ document.getElementById('exampleBtn').addEventListener('click', async () => {
 
 async function runSearch(query) {
     showLoading();
+    history.replaceState(null, '', '?q=' + encodeURIComponent(query));
 
     try {
         const res = await fetch('/api/compare', {
@@ -35,6 +36,11 @@ async function runSearch(query) {
         if (!res.ok) {
             showError(data.error || 'Der opstod en fejl.');
             return;
+        }
+
+        // Opdatér URL med GTIN (mere stabilt end en produkt-URL)
+        if (data.gtin) {
+            history.replaceState(null, '', '?q=' + encodeURIComponent(data.gtin));
         }
 
         // Track search
@@ -156,6 +162,24 @@ function showResults(data) {
             resultsEl.appendChild(note);
         }
     }
+
+    // Del søgning
+    if (data.gtin) {
+        const shareRow = document.createElement('div');
+        shareRow.className = 'share-row';
+        const shareBtn = document.createElement('button');
+        shareBtn.className = 'btn btn-outline share-btn';
+        shareBtn.textContent = '🔗 Kopiér søgelink';
+        shareBtn.addEventListener('click', () => {
+            const url = location.origin + '/?q=' + encodeURIComponent(data.gtin);
+            navigator.clipboard.writeText(url).then(() => {
+                shareBtn.textContent = '✓ Kopieret!';
+                setTimeout(() => { shareBtn.textContent = '🔗 Kopiér søgelink'; }, 2500);
+            });
+        });
+        shareRow.appendChild(shareBtn);
+        resultsEl.appendChild(shareRow);
+    }
 }
 
 fetch('/api/rss')
@@ -183,3 +207,12 @@ function showError(msg) {
     box.textContent = msg;
     resultsEl.replaceChildren(box);
 }
+
+// Auto-søg fra URL-parameter: ?q=<gtin-eller-url>
+(function () {
+    const q = new URLSearchParams(location.search).get('q');
+    if (!q) return;
+    input.value = q;
+    document.getElementById('tool').scrollIntoView({ behavior: 'instant', block: 'start' });
+    runSearch(q);
+})();
