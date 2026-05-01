@@ -318,6 +318,16 @@ function displayPrice(responses, identifier, identifierType) {
                 } catch (e) {
                     return null;
                 }
+            } else if (shop.clerkSearch) {
+                try {
+                    const json = JSON.parse(response.html);
+                    if (json.status !== 'ok' || !json.result || json.result.length === 0) return null;
+                    const price = parseFloat(json.result[0].price);
+                    if (isNaN(price) || price <= 0) return null;
+                    priceText = String(price);
+                } catch (e) {
+                    return null;
+                }
             } else if (shop.scriptExtract) {
                 let searchHtml = response.html;
                 if (shop.scriptExtract.container) {
@@ -1218,7 +1228,9 @@ async function searchWithIdentifier(identifier, identifierType, onShopResult, sk
     const shopPromises = activeShops.map(async (shop, i) => {
         try {
 
-            const url = shop.domain === 'r2-bike.com'
+            const url = shop.clerkSearch
+                ? shop.url + encodeURIComponent(cleanIdentifier) + (shop.urlSuffix || '')
+                : shop.domain === 'r2-bike.com'
                 ? buildSearchUrl(shop, cleanIdentifier, cleanIdentifier)
                 : shop.url + encodeURIComponent(cleanIdentifier);
 

@@ -25,7 +25,8 @@
     "https://*.boerkopcykler.dk/*",
     "https://*.hollandbikeshop.com/*",
     "https://*.pedalatleten.dk/*",
-    "https://*.csmegastore.dk/*"
+    "https://*.csmegastore.dk/*",
+    "https://api.clerk.io/*"
   ],
   "background": {
     "service_worker": "background_sw.js"

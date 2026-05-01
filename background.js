@@ -4,6 +4,7 @@ function isSafeShopUrl(url) {
     try {
         const { protocol, hostname } = new URL(url);
         if (protocol !== 'https:' && protocol !== 'http:') return false;
+        if (hostname === 'api.clerk.io') return true;
         return SHOPS.some(shop => hostname.endsWith(shop.domain));
     } catch { return false; }
 }
