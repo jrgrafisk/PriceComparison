@@ -54,7 +54,7 @@ function parseJSONLDPrice(html, gtin, shop) {
                     const priceText = currency === 'DKK'
                         ? `${price.toFixed(2).replace('.', ',')} kr.`
                         : `${price.toFixed(2)} €`;
-                    return { priceText, price, currency };
+                    return { priceText, price, currency, productName: item.name || null };
                 }
             }
         } catch (e) {}
@@ -250,7 +250,7 @@ async function fetchShopPrice(shop, gtin) {
             : priceData.price * EXCHANGE_RATES.EUR_TO_DKK;
 
         return {
-            result: { shop: shop.name, priceText: `${Math.round(dkkPrice)} kr.`, dkkPrice: Math.round(dkkPrice), url },
+            result: { shop: shop.name, priceText: `${Math.round(dkkPrice)} kr.`, dkkPrice: Math.round(dkkPrice), url, productName: priceData.productName || null },
             shop: shop.name,
             status: 'ok'
         };
@@ -286,7 +286,8 @@ async function compareByGTIN(gtin) {
             .filter(r => r.status === 'fulfilled')
             .map(r => [r.value.shop, r.value.status])
     );
-    return { results, shopStatus };
+    const productName = results.find(r => r.productName)?.productName || null;
+    return { results, shopStatus, productName };
 }
 
 module.exports = { compareByGTIN };

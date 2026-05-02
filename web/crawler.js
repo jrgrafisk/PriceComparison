@@ -19,7 +19,8 @@ function sleep(ms) {
 
 async function crawlGtin(gtin) {
     try {
-        const { results } = await compareByGTIN(gtin);
+        const { results, productName } = await compareByGTIN(gtin);
+        if (productName) db.upsertProduct(gtin, productName);
         for (const r of results) {
             db.insertSnapshot(gtin, r.shop, r.dkkPrice, r.url);
         }
