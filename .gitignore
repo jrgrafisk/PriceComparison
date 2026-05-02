@@ -1,1 +1,4 @@
 web/logs/
+web/data/
+node_modules/
+web/node_modules/

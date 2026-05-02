@@ -2,6 +2,7 @@ const express = require('express');
 const path = require('path');
 const { compareByGTIN } = require('./lib/compare');
 const { extractGTINFromURL } = require('./lib/gtinExtract');
+const db = require('./lib/db');
 
 const app = express();
 
@@ -118,11 +119,22 @@ app.post('/api/compare', corsCheck, rateLimit, async (req, res) => {
         }
 
         const { results, shopStatus } = await compareByGTIN(gtin);
+        db.logSearch(gtin, 'web');
         res.json({ gtin, results, shopStatus });
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Der opstod en fejl. Prøv igen.' });
     }
+});
+
+app.get('/api/history/:gtin', corsCheck, rateLimit, (req, res) => {
+    const { gtin } = req.params;
+    if (!/^\d{8,14}$/.test(gtin)) {
+        return res.status(400).json({ error: 'Ugyldigt GTIN' });
+    }
+    const history = db.priceHistory(gtin);
+    const latest  = db.latestPrices(gtin);
+    res.json({ gtin, latest, history });
 });
 
 const PORT = process.env.PORT || 3000;
